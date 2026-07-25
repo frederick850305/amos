@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AMOS 数据架构图</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root { --bg:#0f172a; --card:#1e293b; --ink:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --line:#334155; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  header { padding:28px 32px 8px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0 0 6px; font-size:22px; }
+  header p { margin:0; color:var(--muted); font-size:13px; }
+  main { padding:20px 32px 60px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:18px 22px; margin-bottom:22px; box-shadow:0 4px 20px rgba(0,0,0,.25); }
+  section h2 { margin:0 0 4px; font-size:17px; color:var(--accent); }
+  section .desc { margin:0 0 14px; color:var(--muted); font-size:12.5px; }
+  .mermaid { background:#fff; border-radius:8px; padding:14px; overflow:auto; }
+  footer { padding:0 32px 30px; color:var(--muted); font-size:12px; }
+  code { background:#0b1220; color:#7dd3fc; padding:1px 6px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AMOS（M&amp;P 国产化原型）· 整体数据架构图</h1>
+  <p>基于 <code>src/mock/index.js</code> · <code>src/services/collectionService.js</code> · <code>src/windows/registry.js</code> · <code>src/data/amosData.js</code> 实测还原</p>
+</header>
+<main>
+
+<section>
+  <h2>① 系统分层架构（Layered Architecture）</h2>
+  <p class="desc">元数据驱动：UI 由 <code>windowRegistry</code> 配置渲染，领域服务承载业务规则，<code>collectionService</code> 提供统一按键访问，底层为响应式内存仓库 <code>db</code>。</p>
+  <div class="mermaid">
+flowchart TD
+  subgraph UI["表现层 / UI (Vue)"]
+    direction TB
+    BW["BusinessWindow / RecordDetail（通用容器）"]
+    PAGES["40+ 业务窗口（Components / Stock / Forms / Budgets…）"]
+  end
+  subgraph META["配置 / 元数据层 (Metadata)"]
+    direction TB
+    REG["windowRegistry（dataKey + detailTabs 字段配置）"]
+    AMOS["amosData.js（modules / pageDefs / menu / installations）"]
+  end
+  subgraph DOM["领域服务层 (Domain Services)"]
+    direction TB
+    DS1["componentService / componentTypeService"]
+    DS2["jobService / workOrderService / functionService"]
+    DS3["stockTypeService / stockService / purchaseService"]
+    DS4["budgetService / transferService / projectService"]
+  end
+  subgraph ACC["通用访问层 (Generic Access)"]
+    direction TB
+    CS["collectionService（KNOWN_KEYS 白名单 + CRUD）"]
+    LK["lookups（派生查询 / lookup-with-name）"]
+    DA["dashboardAlerts（computed 告警）"]
+  end
+  subgraph DATA["数据层 (Data)"]
+    direction TB
+    DB[("db (reactive 内存仓库)")]
+    REGI["注册表: makerRegistry / functionCriticalities / locations"]
+    AUDIT["审计: componentStatusLog / componentArchives / maintenanceLog"]
+  end
+
+  BW --> REG
+  PAGES --> META
+  REG --> DS1 & DS2 & DS3 & DS4
+  AMOS --> UI
+  DS1 & DS2 & DS3 & DS4 --> CS
+  DS1 & DS2 & DS3 & DS4 --> LK
+  CS --> DB
+  LK --> DB
+  DA --> DB
+  DB --- REGI
+  DB --- AUDIT
+  </div>
+</section>
+
+<section>
+  <h2>② 核心实体关系（ER Diagram）</h2>
+  <p class="desc">跨四业务域（Maintenance / Stock / Purchase / Budget）的实体与外键关系。安装地点 <code>installation</code> 为逻辑分区键，部门 <code>department</code> 为范围维度。</p>
+  <div class="mermaid">
+erDiagram
+  INSTALLATION ||--o{ DEPARTMENT : "scope"
+  INSTALLATION ||--o{ COMPONENT : "owns"
+  INSTALLATION ||--o{ FUNCTION : "locates"
+  INSTALLATION ||--o{ STOCKITEM : "stores"
+  INSTALLATION ||--o{ WORKORDER : "runs"
+
+  COMPONENTTYPE ||--o{ COMPONENT : "templated-by typeNumber"
+  COMPONENTTYPE ||--o{ JOB : "type-level jobs"
+  COMPONENTTYPE ||--o{ STOCKTYPE : "parts. stockTypeNo"
+
+  COMPONENT ||--o{ JOB : "component-level jobs inheritedFrom"
+  COMPONENT ||--o{ WORKORDER : "componentId"
+  COMPONENT ||--o{ COMPONENTCOUNTER : "dependsOn C-10001"
+
+  FUNCTION ||--o| COMPONENT : "installedComponentId"
+  FUNCTION ||--o{ WORKORDER : "functionNo"
+  FUNCTION ||--o{ ROTATIONLOG : "rotationLog"
+
+  JOB ||--o{ WORKORDER : "jobId"
+  JOBDESCRIPTION ||--o{ JOB : "jdCode"
+
+  STOCKTYPE ||--o{ STOCKITEM : "stockTypeNo"
+  STOCKTYPE ||--o{ STOCKTYPEMAKER : "stockTypeNo"
+  STOCKTYPE ||--o{ STOCKTYPEVENDOR : "stockTypeNo"
+  STOCKTYPE ||--o{ STOCKGRADE : "stockTypeNo"
+  MAKERREGISTRY ||--o| STOCKTYPE : "maker code"
+  STOCKITEM ||--o{ TRANSACTION : "stockItem"
+  STOCKITEM ||--o{ STOCKWANTED : "stockTypeNo"
+
+  PURCHASEFORM ||--o{ QUOTATION : "formNo"
+  PURCHASEFORM ||--o{ DELIVERY : "formNo"
+  PURCHASEFORM ||--o{ QUALITYCHECK : "formNo"
+  PURCHASEFORM ||--o{ TRANSPORTDOC : "via delivery"
+  CONTRACT ||--o{ PURCHASEFORM : "contractNo"
+  STOCKTYPE ||--o{ PURCHASEFORMLINE : "partNo"
+
+  VOUCHER ||--o{ PURCHASEFORM : "formNos[]"
+  BUDGET ||--o{ VOUCHER : "budgetCode"
+
+  WORKORDER ||--o{ MAINTENANCELOG : "workOrder"
+  COMPONENT ||--o{ COMPONENTSTATUSLOG : "componentId"
+  </div>
+</section>
+
+<section>
+  <h2>③ 数据读写流向（Command / Query Flow）</h2>
+  <p class="desc">命令侧写入经领域服务 → <code>collectionService</code> → <code>db</code>；查询侧经 <code>lookups</code> 派生；告警由 <code>db</code> 经 <code>computed</code> 实时计算。</p>
+  <div class="mermaid">
+flowchart LR
+  U["UI 操作"] -->|写| DS["领域服务（业务规则校验）"]
+  DS -->|push / removeBy| CS["collectionService"]
+  CS -->|white-list KNOWN_KEYS| DB[("db reactive")]
+  U -->|读列表/下拉| LK["lookups / dashboardAlerts"]
+  LK --> DB
+  DB -->|响应式| U
+  DB -->|computed 派生| AL["Dashboard Alerts"]
+  </div>
+</section>
+
+<section>
+  <h2>④ 多租户 / 范围隔离（Fleet + Scope）</h2>
+  <p class="desc">三艘船（Traveller / Voyager / Endeavour）为 Fleet 级分区；每船含若干部门（Engine Room / Deck / …）作为 scope。业务集合通过 <code>installation</code> + <code>department</code> 两字段做范围过滤（当前 <code>store.scopeByDepartment</code> 已初步实现，应在 Repository 层统一注入）。</p>
+  <div class="mermaid">
+flowchart TD
+  FLEET["FLEET（船队）"] --> I1["Installation: Traveller"]
+  FLEET --> I2["Installation: Voyager"]
+  FLEET --> I3["Installation: Endeavour"]
+  I1 --> D1["Dept: Engine Room / Deck / Bridge / Cargo / …"]
+  I2 --> D2["Dept: Engine Room / Cargo / Electrical / …"]
+  I3 --> D3["Dept: Engine Room / Cargo / Deck / …"]
+  D1 --> B1["业务数据集合（带 installation + department 标签）"]
+  </div>
+</section>
+
+<section>
+  <h2>⑤ 注册表与审计机制（Registry + Audit）</h2>
+  <p class="desc">主数据（maker / vendor / criticality / location / jobDescription）统一为编码注册表供 lookup 引用；变更类操作通过 StatusLog / Archives / MaintenanceLog 留痕（建议升级为统一 EventBus + AuditLog）。</p>
+  <div class="mermaid">
+flowchart LR
+  subgraph REGS["注册表（主数据 / Register）"]
+    MREG["makerRegistry（code + name）"]
+    FCRIT["functionCriticalities（degree + color）"]
+    LOC["locations"]
+    JDESC["jobDescriptions"]
+  end
+  subgraph AUD["审计轨迹（Audit Trail）"]
+    CSL["componentStatusLog（安装/拆卸/改状态）"]
+    CA["componentArchives（转入档案）"]
+    CFH["componentFunctionHistory（功能位置轮换）"]
+    ML["maintenanceLog（汇报历史）"]
+  end
+  REGS -->|lookup-with-name 引用| DATA[("db 业务集合")]
+  DATA -->|事件| AUD
+  </div>
+</section>
+
+<section>
+  <h2>⑥ 现状 vs 目标架构（Roadmap）</h2>
+  <p class="desc">当前为纯前端内存态、无持久化与契约约束；目标演进路径如上次规划：Repository 接口化 + Schema 校验 + 聚合层（CQRS-lite）+ 引用完整性 + 持久化。</p>
+  <div class="mermaid">
+flowchart LR
+  subgraph NOW["现状（v10.0.30 原型）"]
+    N1["db 内存 reactive"]
+    N2["collectionService 白名单"]
+    N3["lookups 全表 map（无索引/缓存）"]
+    N4["审计埋点散落各流程"]
+  end
+  subgraph TARGET["目标架构"]
+    T1["Repository 接口（dataKey→endpoint）"]
+    T2["Schema 校验（Zod/JSON Schema）"]
+    T3["聚合层 StockAggregate / Wanted / Dashboard"]
+    T4["EventBus + AuditLog（统一审计）"]
+    T5["持久化（IndexedDB → 后端）"]
+    T6["Fleet 多租户 scope 注入"]
+  end
+  N1 --> T1
+  N2 --> T5
+  N3 --> T3
+  N4 --> T4
+  T1 --> T2
+  T1 --> T6
+  </div>
+</section>
+
+</main>
+<footer>
+  生成于 2026-07-25 · 架构图基于代码实测还原，可用浏览器直接打开本文件查看（依赖 Mermaid CDN）。
+  如需导出为图片，可在浏览器中右键图表 → “Save image as”。
+</footer>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'default', securityLevel: 'loose' });
+</script>
+</body>
+</html>

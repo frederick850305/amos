@@ -1,0 +1,20 @@
+{
+  "name": "amos-mp-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AMOS M&P 国产化 Vue 原型系统（船舶维护 / 库存 / 采购 / 预算）",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "vue": "^3.5.26"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "playwright": "^1.61.1",
+    "vite": "^7.2.7"
+  }
+}
