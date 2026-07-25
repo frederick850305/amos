@@ -88,7 +88,8 @@ export function setPresetFilter(filter) {
 
 export function setInstallation(code) {
   store.installation = code
-  const dept = DEPARTMENTS_BY_INSTALLATION[code]
+  // 优先用后端拉取的真实部门；回落静态 Mock
+  const dept = (departmentsByInstallation.value && departmentsByInstallation.value[code]) || DEPARTMENTS_BY_INSTALLATION[code]
   if (dept && dept.length) store.department = dept[0]
 }
 export function setDepartment(code) {
@@ -110,3 +111,4 @@ export function scopeByDepartment(rows) {
 
 // 延迟引入，避免循环依赖
 import { DEPARTMENTS_BY_INSTALLATION } from './data/amosData.js'
+import { departmentsByInstallation } from './store/session.js'

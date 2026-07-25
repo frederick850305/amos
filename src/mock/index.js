@@ -1,4 +1,5 @@
 import { reactive, computed } from 'vue'
+import { session } from '../store/session.js'
 
 // ============================================================
 // Neusoft M&P 原型 Mock 数据库（纯前端，内存态）
@@ -657,11 +658,17 @@ export const lookups = {
   components: () => db.components.map((c) => ({ code: c.number, label: `${c.number} — ${c.name}` })),
   functions: () => db.functions.map((f) => ({ code: f.functionNo, label: `${f.functionNo} — ${f.description}` })),
   // 手册 Working with Functions：Location 字段使用编码 + 描述的 lookup（来源：db.locations 主数据）
-  locations: () => db.locations.map((l) => ({ code: l.code, label: l.description && l.description !== l.code ? `${l.code} — ${l.description}` : l.code })),
+  // 前端联调：优先用后端 location_register（code/name）；缓存为空时回落本地 Mock
+  locations: () => session.registerCache.locations.length
+    ? session.registerCache.locations.map((l) => ({ code: l.code, label: l.name && l.name !== l.code ? `${l.code} — ${l.name}` : l.code }))
+    : db.locations.map((l) => ({ code: l.code, label: l.description && l.description !== l.code ? `${l.code} — ${l.description}` : l.code })),
   stockTypes: () => db.stockTypes.map((s) => ({ code: s.stockTypeNo, label: `${s.stockTypeNo} — ${s.description}` })),
   stockItems: () => db.stockItems.map((s) => ({ code: s.stockItemNo, label: `${s.stockItemNo} — ${s.description}` })),
-  // 手册 P181-182：Preferred Vendor 定位到 Address Register（商业伙伴）。从 stockTypes 收集现有供应商，统一为 {code,label} 供 lookup 弹窗使用
-  vendors: () => [...new Set(db.stockTypes.map((s) => s.vendor).filter(Boolean))].sort().map((v) => ({ code: v, label: v })),
+  // 手册 P181-182：Preferred Vendor 定位到 Address Register（商业伙伴）。
+  // 前端联调：优先用后端 vendor_register（键 vendorNo）；缓存为空时回落本地 Mock
+  vendors: () => session.registerCache.vendors.length
+    ? session.registerCache.vendors.map((v) => ({ code: v.vendorNo, label: v.name }))
+    : [...new Set(db.stockTypes.map((s) => s.vendor).filter(Boolean))].sort().map((v) => ({ code: v, label: v })),
   contracts: () => db.contracts.map((c) => ({ code: c.contractNo, label: `${c.contractNo} — ${c.title}` })),
   budgets: () => db.budgets.map((b) => ({ code: b.code, label: `${b.code} — ${b.title}` })),
   // 手册 P44：Component Jobs 中，Counter Code 下拉仅列出该组件自身已登记的计数器
@@ -690,7 +697,10 @@ export const lookups = {
     return (ct?.measurePointDefs || []).map((m) => ({ code: m.code, label: `${m.code} — ${m.description}` }))
   },
   // 手册 P44-46：Function Criticality 注册表（degree 列表 + 颜色），驱动 Criticality 下拉与颜色编码指示器
-  criticalities: () => db.functionCriticalities.map((c) => ({ code: c.code, label: c.description, color: c.color })),
+  // 前端联调：优先用后端 function_criticality（degree/description/color）；缓存为空时回落本地 Mock
+  criticalities: () => session.registerCache.functionCriticalities.length
+    ? session.registerCache.functionCriticalities.map((c) => ({ code: c.degree, label: c.description, color: c.color }))
+    : db.functionCriticalities.map((c) => ({ code: c.code, label: c.description, color: c.color })),
   // 手册 P64-65：Related Jobs —— 同类型 / 同组件下的其它作业（排除自身）
   jobsForType: (model) => db.jobs
     .filter((j) => j.targetType === model?.targetType && j.targetId === model?.targetId && j.jobNo !== model?.jobNo)
@@ -725,7 +735,10 @@ export const lookups = {
     { code: 'FURU', name: 'Furuno Electric' }, { code: 'TTS', name: 'TTS (MacGregor Group)' },
     { code: 'MANB', name: 'MAN B&W DIESEL A/S' },
   ],
-  makers: () => db.makerRegistry.map((m) => ({ code: m.code, label: m.name })),
+  // 前端联调：优先用后端 maker_register；缓存为空时回落本地 Mock
+  makers: () => session.registerCache.makers.length
+    ? session.registerCache.makers.map((m) => ({ code: m.code, label: m.name }))
+    : db.makerRegistry.map((m) => ({ code: m.code, label: m.name })),
 }
 
 // ===== Dashboard 告警 / 通知（从 db 动态计算，确保双击跳转后数据一致） =====

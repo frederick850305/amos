@@ -1,5 +1,6 @@
 <template>
-  <div class="app-shell">
+  <LoginView v-if="!session.loggedIn" />
+  <div v-else class="app-shell">
     <!-- 顶部标题栏 -->
     <header class="top-bar">
       <div class="tb-brand">
@@ -13,7 +14,7 @@
         <label class="tb-field">
           <span>安装地点</span>
           <select v-model="store.installation" class="amos-select sm" @change="onInstChange">
-            <option v-for="i in installations" :key="i.code" :value="i.code">{{ i.code }}</option>
+            <option v-for="i in instOptions" :key="i.code" :value="i.code">{{ i.code }}</option>
           </select>
         </label>
         <label class="tb-field">
@@ -24,7 +25,7 @@
         </label>
         <span class="tb-user">
           <span class="tb-avatar">{{ userInitial }}</span>
-          {{ store.user }}
+          {{ session.user || store.user }}
         </span>
         <button class="amos-btn ghost" title="锁定" @click="lock">🔒</button>
       </div>
@@ -74,14 +75,22 @@ import MenuBar from './components/MenuBar.vue'
 import Toolbar from './components/Toolbar.vue'
 import StatusBar from './components/StatusBar.vue'
 import GlobalDialogs from './components/GlobalDialogs.vue'
+import LoginView from './views/LoginView.vue'
 import { store, openWindow, closeTab, showToast } from './store.js'
 import { installations, departments, prototypeData } from './data/amosData.js'
 import { pageComponents } from './pages/index.js'
+import { session, bootstrapSession, departmentsByInstallation } from './store/session.js'
 
 const activeComponent = computed(() => pageComponents[store.activeKey] || pageComponents.dashboard)
 
-const deptOptions = computed(() => departments.filter((d) => d.installation === store.installation).map((d) => d.code))
-const userInitial = computed(() => (store.user || 'A').trim().charAt(0).toUpperCase())
+// 登录后端后取真实 Installations/Departments；未登录时回落 amosData 静态 Mock
+const instOptions = computed(() => (session.installations.length ? session.installations : installations))
+const deptOptions = computed(() => {
+  const dyn = departmentsByInstallation.value[store.installation]
+  if (dyn && dyn.length) return dyn
+  return departments.filter((d) => d.installation === store.installation).map((d) => d.code)
+})
+const userInitial = computed(() => ((session.user || store.user || 'A')).trim().charAt(0).toUpperCase())
 
 function onInstChange() {
   store.department = deptOptions.value[0] || ''
@@ -98,8 +107,14 @@ function onKeydown(e) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
+  // 前端联调：若本地有令牌则恢复真实会话（me + scopes + register 缓存）
+  const ok = await bootstrapSession()
+  if (ok && session.installations.length) {
+    store.installation = session.installations[0].code
+    store.department = (session.installations[0].departments[0] && session.installations[0].departments[0].code) || ''
+  }
   if (store.options.enableDashboard && !store.openTabs.length) openWindow('dashboard')
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
