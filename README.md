@@ -3,6 +3,8 @@
 面向船舶 / 海工资产维护、库存、采购与预算管理的桌面型企业系统原型（原型演示用，非生产系统）。
 依据 `AMOS M&P Vrs.10.0.30 User Guide.pdf` 提炼，复刻传统 AMOS 桌面操作体验。
 
+> 配套后端：`amos-server`（Spring Boot 3.2.5 + Flyway，独立仓库 github.com/frederick850305/amos-server）。
+
 ## 技术栈
 
 - Vue 3 + Vite（与同仓 `prototypes/aps` 保持一致的轻量方案，无第三方 UI 库 / 路由）
@@ -22,7 +24,7 @@ npm run preview  # 预览生产构建
 ## 系统结构
 
 ```
-prototypes/amos/
+amos/
 ├── index.html
 ├── vite.config.js
 ├── package.json
