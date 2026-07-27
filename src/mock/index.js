@@ -655,6 +655,8 @@ if (!db.locations.length) {
 // ===== 派生查询列表（供 Lookup 使用） =====
 export const lookups = {
   componentTypes: () => db.componentTypes.map((c) => ({ code: c.typeNumber, label: `${c.typeNumber} — ${c.name}` })),
+  // Component Type Model 选择器：取所有组件类型 model 去重（排除自身由调用方无关，这里仅提供候选集）
+  componentTypeModels: () => [...new Set((db.componentTypes || []).map((c) => c.model).filter((m) => m && m.trim()))].map((m) => ({ code: m, label: m })),
   // 父组件 / 依赖组件选择器：列出已有组件；排除当前记录自身（避免自引用 / 层级成环）
   components: (model) => (db.components || []).filter((c) => !model || !model.number || c.number !== model.number).map((c) => ({ code: c.number, label: `${c.number} — ${c.name}` })),
   functions: () => db.functions.map((f) => ({ code: f.functionNo, label: `${f.functionNo} — ${f.description}` })),
