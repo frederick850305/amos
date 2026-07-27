@@ -359,7 +359,7 @@ watch(() => store.installation, () => { selected.value = null })
 // ===== 功能位置树：按 parentFunctionNo 嵌套；已安装部件作为叶子 =====
 // 仅展示当前船（store.installation）的功能位置
 const roots = computed(() => {
-  const list = functionService.list().filter((f) => f.installation === store.installation)
+  const list = functionService.listSync().filter((f) => f.installation === store.installation)
   const nodes = {}
   list.forEach((f) => {
     nodes[f.functionNo] = { id: 'fn:' + f.functionNo, type: 'function', no: f.functionNo, label: f.description, status: f.status, criticality: f.criticality, children: [] }
@@ -620,7 +620,7 @@ function createFunction() {
   // 新建功能位置归属当前船
   functionService.add({ ...f, installation: store.installation })
   newOpen.value = false
-  expandedIds.value = new Set(functionService.list().filter((x) => x.installation === store.installation).map((x) => 'fn:' + x.functionNo))
+  expandedIds.value = new Set(functionService.listSync().filter((x) => x.installation === store.installation).map((x) => 'fn:' + x.functionNo))
   showToast('已创建功能位置：' + f.functionNo, 'ok')
 }
 
@@ -628,7 +628,7 @@ function createFunction() {
 function onKey(e) { if (e.key === 'F3') { e.preventDefault(); onFind() } }
 onMounted(() => {
   // 初始化：当前船的 Function 节点默认展开
-  expandedIds.value = new Set(functionService.list().filter((f) => f.installation === store.installation).map((f) => 'fn:' + f.functionNo))
+  expandedIds.value = new Set(functionService.listSync().filter((f) => f.installation === store.installation).map((f) => 'fn:' + f.functionNo))
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
