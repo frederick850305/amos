@@ -2,7 +2,7 @@
   <div class="biz-win" v-if="config">
     <div class="bw-head">
       <h2>{{ config.windowTitle }}</h2>
-      <div class="row" style="gap:6px">
+      <div class="bw-actions">
         <input
           v-model.trim="q"
           class="amos-input sm"
@@ -11,7 +11,6 @@
           @keyup.enter="onSearch"
         />
         <button class="amos-btn sm" @click="onSearch">Search</button>
-        <span class="muted">{{ total }} 条记录</span>
         <button class="amos-btn sm" @click="doNew">New</button>
         <button class="amos-btn sm primary" @click="doSave" :disabled="!selected">Save</button>
         <button class="amos-btn sm" @click="doDelete" :disabled="!selected || isNew(selected)">Delete</button>
@@ -21,6 +20,7 @@
 
     <!-- 分页条：后端分页（PR #8）驱动；总数 > 每页大小时出现翻页按钮 -->
     <div class="bw-pager">
+      <span class="muted rec-count">{{ total }} 条记录</span>
       <button class="amos-btn xs" @click="goFirst" :disabled="page === 0 || loading">« 首页</button>
       <button class="amos-btn xs" @click="goPrev" :disabled="page === 0 || loading">‹ 上一页</button>
       <span class="muted">第 {{ page + 1 }} / {{ totalPages }} 页</span>
@@ -60,7 +60,7 @@
       <section class="bw-detail" v-if="selected">
         <div class="bd-head">
           <strong>{{ selected[config.codeField] || config.windowTitle }}</strong>
-          <span class="tag" :class="statusClass">{{ statusDisplay }}</span>
+          <span class="tag" :class="statusClass">{{ statusText }}</span>
         </div>
         <RecordDetail :tabs="detailTabs" :model="selected" />
       </section>
@@ -103,14 +103,14 @@ const sort = ref('')
 const q = ref('')
 const loading = ref(false)
 
-function statusDisplay() {
+const statusText = computed(() => {
   if (!selected.value || !config.value) return '—'
   const v = selected.value[config.value.statusField]
   if (config.value.statusKind === 'boolean') return v ? 'Active' : 'Inactive'
   return v || '—'
-}
+})
 const statusClass = computed(() => {
-  const v = String(statusDisplay()).toLowerCase()
+  const v = String(statusText.value).toLowerCase()
   if (/(active|true)/.test(v)) return 'green'
   if (/(inactive|false)/.test(v)) return 'gray'
   return 'gray'
@@ -253,9 +253,13 @@ onActivated(load)
 /* Function Criticality 列表 Indicator 列的颜色块 */
 .crit-indicator { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; box-shadow: 0 0 0 1px rgba(0,0,0,0.08) inset; }
 .crit-text { color: #2c3e50; }
-.bw-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid var(--amos-border); }
+.bw-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid var(--amos-border); }
 .bw-head h2 { margin: 0; font-size: 15px; color: #2c486a; }
+.bw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: flex-end; flex: 1; }
+.bw-actions .amos-input { flex-shrink: 0; }
+.bw-actions .amos-btn { flex-shrink: 0; }
 /* 分页条 */
+.bw-pager .rec-count { white-space: nowrap; }
 .bw-pager { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--amos-border); background: #f7f9fc; font-size: 12px; }
 .bw-pager .spacer { flex: 1; }
 .bw-pager .amos-select.xs { padding: 2px 4px; font-size: 12px; }
