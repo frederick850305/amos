@@ -383,7 +383,7 @@ const tabs = [
   { id: 'type', label: 'Type Details', fields: [
     { key: 'vendor', label: 'Vendor', type: 'lookup', lookupKey: 'vendors' },
     { key: 'location', label: 'Location', type: 'lookup', lookupKey: 'locations' },
-    { key: 'parentComponent', label: 'Parent Component' },
+    { key: 'parentComponent', label: 'Parent Component', type: 'lookup-with-name', lookupKey: 'components' },
     { key: 'installDate', label: 'Install Date', type: 'date' },
     { key: 'componentTypeModel', label: 'Component Type Model' },
   ] },

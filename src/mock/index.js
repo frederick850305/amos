@@ -655,7 +655,8 @@ if (!db.locations.length) {
 // ===== 派生查询列表（供 Lookup 使用） =====
 export const lookups = {
   componentTypes: () => db.componentTypes.map((c) => ({ code: c.typeNumber, label: `${c.typeNumber} — ${c.name}` })),
-  components: () => db.components.map((c) => ({ code: c.number, label: `${c.number} — ${c.name}` })),
+  // 父组件 / 依赖组件选择器：列出已有组件；排除当前记录自身（避免自引用 / 层级成环）
+  components: (model) => (db.components || []).filter((c) => !model || !model.number || c.number !== model.number).map((c) => ({ code: c.number, label: `${c.number} — ${c.name}` })),
   functions: () => db.functions.map((f) => ({ code: f.functionNo, label: `${f.functionNo} — ${f.description}` })),
   // 手册 Working with Functions：Location 字段使用编码 + 描述的 lookup（来源：db.locations 主数据）
   // 前端联调：优先用后端 location_register（code/name）；缓存为空时回落本地 Mock
