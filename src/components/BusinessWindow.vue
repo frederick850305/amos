@@ -404,6 +404,13 @@ const detailTitleKey = computed(() => {
 
 const dbRows = computed(() => {
   const d = config.value?.dataKey
+  // 手册 P20：Functions 窗口数据接入后端。功能位置按船（installation）划分；其 department
+  // 为描述性名称，而登录后会话的 department 是 code，二者不匹配，故仅按当前 installation 过滤，
+  // 不按 department 收敛，避免后端功能位置全部被 scopeByDepartment 隐藏。
+  if (d === 'functions') {
+    const inst = store.installation
+    return functionService.listSync().filter((f) => !inst || !f.installation || f.installation === inst)
+  }
   const rows = d ? collectionService.collection(d) : []
   // 手册 P20（Installations and Departments）：按当前安装地点 + 部门过滤数据权限
   return scopeByDepartment(rows)
@@ -514,12 +521,17 @@ function blankRecord() {
 function doNew() {
   if (showFilter.value) return
   const rec = blankRecord()
+  if (config.value?.dataKey === 'functions') {
+    // 新建功能位置归属当前船与当前工作范围（字段由后端持久化时记录）
+    rec.installation = store.installation
+    rec.department = store.department
+  }
   collectionService.push(config.value.dataKey, rec)
   viewRows.value = [...viewRows.value, rec]
   selected.value = rec
   showToast('已新建记录，编辑后点击 Save', 'ok')
 }
-function doSave() {
+async function doSave() {
   if (!selected.value) return showToast('请先选择或新建记录', 'warn')
   // 手册 3（Update Counters）：保存时把读数回写到组件计数器，并级联依赖组件
   if (config.value?.dataKey === 'counterLogs') {
@@ -532,9 +544,21 @@ function doSave() {
     handleJobSave()
     return
   }
+  // 手册 Working with Functions：Functions 窗口的 New/Save 走后端持久化
+  if (config.value?.dataKey === 'functions') {
+    try {
+      const saved = await functionService.save(selected.value)
+      applyFilter({})
+      selected.value = saved
+      showToast('已保存功能位置（已持久化到后端）', 'ok')
+    } catch (e) {
+      showToast('保存失败：' + (e.message || e), 'warn')
+    }
+    return
+  }
   showToast('已保存（原型：内存态）', 'ok')
 }
-function doDelete() {
+async function doDelete() {
   if (!selected.value) return showToast('请先选择记录', 'warn')
   const key = rowKey.value
   const target = selected.value[key]
@@ -542,6 +566,15 @@ function doDelete() {
   if (config.value?.dataKey === 'jobs' && selected.value.targetType === 'ComponentType') {
     jobService.remove(target)
     showToast('已删除类型作业（含级联的继承组件作业）', 'warn')
+  } else if (config.value?.dataKey === 'functions') {
+    // 手册 Working with Functions：Functions 窗口的 Delete 走后端
+    try {
+      await functionService.remove(selected.value)
+    } catch (e) {
+      showToast('删除失败：' + (e.message || e), 'warn')
+      return
+    }
+    showToast('已删除功能位置（已从后端移除）', 'warn')
   } else {
     collectionService.removeBy(config.value.dataKey, (r) => r[key] === target)
     showToast('已删除记录', 'warn')
@@ -550,7 +583,15 @@ function doDelete() {
   if (j >= 0) viewRows.value.splice(j, 1)
   selected.value = null
 }
-function doRefresh() {
+async function doRefresh() {
+  // 手册 Working with Functions：刷新时从后端重新拉取功能位置
+  if (config.value?.dataKey === 'functions') {
+    try {
+      await functionService.loadAll()
+    } catch (e) {
+      showToast('刷新功能位置失败：' + (e.message || e), 'warn')
+    }
+  }
   applyFilter({})
   showToast('已刷新', 'info')
 }
@@ -666,6 +707,8 @@ function openInstall() {
 async function confirmInstall() {
   const fn = selected.value
   if (!fn || !installSelected.value) { showToast('请选择组件', 'warn'); return }
+  // 必须先保存功能位置，后端才有该记录的 id 用于安装命令
+  if (typeof fn.id !== 'number') { showToast('请先保存该功能位置，再安装组件', 'warn'); return }
   await functionService.installComponent(fn.functionNo, installSelected.value, installDetails.value)
   installDialog.value = false
   showToast(`已将 ${installSelected.value} 安装到 ${fn.functionNo}`, 'ok')
@@ -1208,8 +1251,16 @@ function applyPreset() {
     viewRows.value = dbRows.value.slice()
   }
 }
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('amos-action', onAction)
+  // 手册 Working with Functions：Functions 窗口挂载时从后端加载功能位置
+  if (config.value?.dataKey === 'functions') {
+    try {
+      await functionService.loadAll()
+    } catch (e) {
+      showToast('加载功能位置失败：' + (e.message || e), 'warn')
+    }
+  }
   applyPreset()
   // 手册 P44：Components 窗口 Counters 标签 Update 按钮 → 预填当前组件并定位到 General
   if (config.value?.dataKey === 'counterLogs' && store.presetCounterComponent) {
