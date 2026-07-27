@@ -375,7 +375,7 @@ const tabs = [
     { key: 'name', label: 'Name' },
     { key: 'serialNo', label: 'Serial No.' },
     { key: 'maker', label: 'Maker', type: 'lookup', lookupKey: 'makers' },
-    { key: 'type', label: 'Type' },
+    { key: 'type', label: 'Type', type: 'readonly' },
     { key: 'functionNo', label: 'Function', type: 'lookup', lookupKey: 'functions' },
     // 手册（Component Status）：状态在 General tab 仅作指示，修改统一走 Options > Change Status
     { key: 'status', label: 'Status', type: 'readonly' },
