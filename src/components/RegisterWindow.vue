@@ -3,12 +3,39 @@
     <div class="bw-head">
       <h2>{{ config.windowTitle }}</h2>
       <div class="row" style="gap:6px">
-        <span class="muted">{{ rows.length }} 条记录</span>
+        <input
+          v-model.trim="q"
+          class="amos-input sm"
+          style="max-width:200px"
+          placeholder="搜索…"
+          @keyup.enter="onSearch"
+        />
+        <button class="amos-btn sm" @click="onSearch">Search</button>
+        <span class="muted">{{ total }} 条记录</span>
         <button class="amos-btn sm" @click="doNew">New</button>
         <button class="amos-btn sm primary" @click="doSave" :disabled="!selected">Save</button>
         <button class="amos-btn sm" @click="doDelete" :disabled="!selected || isNew(selected)">Delete</button>
         <button class="amos-btn sm" @click="doRefresh">Refresh</button>
       </div>
+    </div>
+
+    <!-- 分页条：后端分页（PR #8）驱动；总数 > 每页大小时出现翻页按钮 -->
+    <div class="bw-pager">
+      <button class="amos-btn xs" @click="goFirst" :disabled="page === 0 || loading">« 首页</button>
+      <button class="amos-btn xs" @click="goPrev" :disabled="page === 0 || loading">‹ 上一页</button>
+      <span class="muted">第 {{ page + 1 }} / {{ totalPages }} 页</span>
+      <button class="amos-btn xs" @click="goNext" :disabled="page >= totalPages - 1 || loading">下一页 ›</button>
+      <button class="amos-btn xs" @click="goLast" :disabled="page >= totalPages - 1 || loading">末页 »</button>
+      <span class="spacer" />
+      <label class="muted">每页
+        <select class="amos-select xs" v-model.number="size" @change="onSizeChange">
+          <option :value="10">10</option>
+          <option :value="20">20</option>
+          <option :value="50">50</option>
+          <option :value="100">100</option>
+        </select>
+      </label>
+      <span v-if="loading" class="muted">加载中…</span>
     </div>
 
     <div class="bw-body">
@@ -17,6 +44,7 @@
           ref="listRef"
           :columns="config.columns"
           :rows="rows"
+          :searchable="false"
           row-key="id"
           :preselect-id="preselectId"
           @select="onSelect"
@@ -66,6 +94,15 @@ const selected = ref(null)
 const preselectId = ref('')
 const listRef = ref(null)
 
+// ===== 分页 / 搜索状态（驱动后端 PR #8 分页增强）=====
+const page = ref(0)
+const size = ref(20)
+const total = ref(0)
+const totalPages = ref(1)
+const sort = ref('')
+const q = ref('')
+const loading = ref(false)
+
 function statusDisplay() {
   if (!selected.value || !config.value) return '—'
   const v = selected.value[config.value.statusField]
@@ -85,12 +122,37 @@ function isNew(row) {
 
 async function load() {
   if (!config.value) return
+  loading.value = true
   try {
-    const data = await registerService.list(store.activeKey)
-    rows.value = Array.isArray(data) ? data : []
+    const data = await registerService.list(store.activeKey, {
+      page: page.value,
+      size: size.value,
+      sort: sort.value,
+      q: q.value || undefined,
+    })
+    // 后端返回 Spring Page 信封（带 page/size 时）或数组（兼容/演示回落）
+    if (data && !Array.isArray(data) && Array.isArray(data.content)) {
+      rows.value = data.content
+      total.value = data.totalElements ?? data.content.length
+      totalPages.value = data.totalPages ?? 1
+      // 防止后端 totalPages 与实际不符时卡在越界页
+      if (page.value > totalPages.value - 1) {
+        page.value = Math.max(0, totalPages.value - 1)
+      }
+    } else {
+      const arr = Array.isArray(data) ? data : []
+      rows.value = arr
+      total.value = arr.length
+      totalPages.value = 1
+      page.value = 0
+    }
   } catch (e) {
     rows.value = []
+    total.value = 0
+    totalPages.value = 1
     showToast('加载失败：' + (e.message || '后端不可达'), 'warn')
+  } finally {
+    loading.value = false
   }
 }
 
@@ -128,11 +190,11 @@ async function doSave() {
     if (isNewRow) saved = await registerService.create(store.activeKey, payload)
     else saved = await registerService.update(store.activeKey, row.id, payload)
     await load()
-    // 选中保存后的行（后端返回的 id）
+    // 选中保存后的行（后端返回的 id），若不在当前页则回落清空
     const id = saved && saved.id != null ? saved.id : row.id
     const found = rows.value.find((r) => r.id === id)
     selected.value = found ? reactive({ ...found }) : null
-    preselectId.value = String(id)
+    preselectId.value = found ? String(id) : ''
     await refreshCache()
     showToast(isNewRow ? '已创建记录' : '已保存记录', 'ok')
   } catch (e) {
@@ -160,14 +222,27 @@ async function doRefresh() {
   showToast('已刷新', 'info')
 }
 
+// 分页 / 搜索动作
+function onSearch() { page.value = 0; load() }
+function onSizeChange() { page.value = 0; load() }
+function goFirst() { if (page.value !== 0) { page.value = 0; load() } }
+function goPrev() { if (page.value > 0) { page.value--; load() } }
+function goNext() { if (page.value < totalPages.value - 1) { page.value++; load() } }
+function goLast() { if (totalPages.value > 1 && page.value !== totalPages.value - 1) { page.value = totalPages.value - 1; load() } }
+
 // 写回后端后刷新 session.registerCache，使各业务窗口的 lookup 即时更新
 async function refreshCache() {
   try { await loadRegisterLookups() } catch (e) { /* 忽略缓存刷新失败 */ }
 }
 
-// 切换 register 页面 / 激活窗口时重新加载
+// 切换 register 页面 / 激活窗口时重新加载（重置到首页）
 watch(() => store.activeKey, (k) => {
-  if (k && registerRegistry[k]) { selected.value = null; load() }
+  if (k && registerRegistry[k]) {
+    selected.value = null
+    page.value = 0
+    q.value = ''
+    load()
+  }
 })
 onMounted(load)
 onActivated(load)
@@ -180,6 +255,10 @@ onActivated(load)
 .crit-text { color: #2c3e50; }
 .bw-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-bottom: 1px solid var(--amos-border); }
 .bw-head h2 { margin: 0; font-size: 15px; color: #2c486a; }
+/* 分页条 */
+.bw-pager { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--amos-border); background: #f7f9fc; font-size: 12px; }
+.bw-pager .spacer { flex: 1; }
+.bw-pager .amos-select.xs { padding: 2px 4px; font-size: 12px; }
 .bw-body { flex: 1; display: grid; grid-template-columns: minmax(640px, 1.4fr) 1fr; min-height: 0; }
 .bw-list { border-right: 1px solid var(--amos-border); padding: 8px; min-height: 0; min-width: 0; display: flex; }
 .bw-list > * { flex: 1; }
