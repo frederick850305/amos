@@ -1007,32 +1007,6 @@ export const windowRegistry = {
     ],
     options: [{ label: 'New Form', action: 'new-form' }, { label: 'Finalise Item', action: 'finalise' }],
   },
-
-  // 手册 P44-46：Function Criticality 注册表（先定义 degree 列表 + 颜色编码指示器，再应用到 Functions / Functions Hierarchy）
-  'function-criticalities': {
-    windowTitle: 'Function Criticality',
-    dataKey: 'functionCriticalities',
-    statusField: 'code',
-    statusOptions: [],
-    filterBasic: [{ key: 'description', label: 'Description', type: 'text' }],
-    filterAdvanced: [],
-    columns: [
-      { key: 'code', label: 'Code', width: '120px' },
-      { key: 'description', label: 'Description', width: '160px' },
-      // Indicator 列以颜色块显示（cell-color 插槽渲染）
-      { key: 'color', label: 'Indicator', width: '100px', color: true },
-    ],
-    detailTabs: [
-      {
-        id: 'general', label: 'General', fields: [
-          { key: 'code', label: 'Code' },
-          { key: 'description', label: 'Description' },
-          { key: 'color', label: 'Colour-coded Indicator', type: 'color' },
-        ],
-      },
-    ],
-    options: [],
-  },
 }
 
 // 小工具：生成带说明的标签页（避免重复）

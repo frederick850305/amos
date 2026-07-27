@@ -39,6 +39,16 @@ const pageDefs = {
   'functions-hierarchy': ['Functions Hierarchy', '固定功能位置树状结构（Toggle number 显示 SFI 编码）', 'P0', 'maintenance'],
   // 手册 P44-46：Function Criticality 注册表（先定义 degree 列表 + 颜色编码指示器，再应用到 Functions / Functions Hierarchy）
   'function-criticalities': ['Function Criticality', '关键性程度注册表：定义 degree 列表与颜色编码指示器', 'P2', 'maintenance'],
+  // 手册模块 2：Registers —— 基础主数据寄存器（统一走通用 Register 管理窗口，API 驱动）
+  'disciplines': ['Disciplines', '专业 / 工种（jobs.required_discipline）', 'P2', 'maintenance'],
+  'job-classes': ['Job Classes', '作业等级（jobs.class_code）', 'P2', 'maintenance'],
+  'trades': ['Trades', '工种（jobs.trade）', 'P2', 'maintenance'],
+  'makers': ['Makers', '合格制造商（Address Register）', 'P2', 'purchase'],
+  'vendors': ['Vendors', '合格供应商（Address Register）', 'P2', 'purchase'],
+  'currencies': ['Currencies', '币种（Purchasing / Financials）', 'P2', 'purchase'],
+  'locations': ['Locations', '地点主数据（Stock Item Locations）', 'P2', 'stock'],
+  'units': ['Units', '计量单位（Stock 引用）', 'P2', 'stock'],
+  'budget-codes': ['Budget Codes', '预算代码（budgets.budget_code）', 'P2', 'budget'],
   'component-type-jobs': ['Component Type Jobs', '组件类型级别预防性维护作业', 'P1', 'maintenance'],
   'component-jobs': ['Component Jobs', '组件级别维护作业', 'P1', 'maintenance'],
   'job-planning': ['Job Planning', '周期 / 计数器 / 测点 / 触发式调度', 'P1', 'maintenance'],
@@ -121,6 +131,9 @@ export const menu = [
       { label: 'Functions Hierarchy', page: 'functions-hierarchy' },
       // 手册 P44-46：Function Criticality 注册表入口
       { label: 'Function Criticality', page: 'function-criticalities' },
+      { label: 'Disciplines', page: 'disciplines' },
+      { label: 'Job Classes', page: 'job-classes' },
+      { label: 'Trades', page: 'trades' },
       { label: 'Component Type Jobs', page: 'component-type-jobs' },
       { label: 'Component Jobs', page: 'component-jobs' },
       { label: 'Job Planning', page: 'job-planning' },
@@ -146,6 +159,8 @@ export const menu = [
       { label: 'In / Out of Stock', page: 'transactions' },
       { label: 'Stock Control', page: 'stock-control' },
       { label: 'Transfer Documents', page: 'transfer-documents' },
+      { label: 'Locations', page: 'locations' },
+      { label: 'Units', page: 'units' },
     ],
   },
   {
@@ -159,6 +174,9 @@ export const menu = [
       { label: 'Quality Checks', page: 'quality-checks' },
       { label: 'Contracts', page: 'contracts' },
       { label: 'Custom Clearance Forms', page: 'custom-clearance-forms' },
+      { label: 'Makers', page: 'makers' },
+      { label: 'Vendors', page: 'vendors' },
+      { label: 'Currencies', page: 'currencies' },
     ],
   },
   {
@@ -166,6 +184,7 @@ export const menu = [
     items: [
       { label: 'Budget', page: 'budgets' },
       { label: 'Vouchers', page: 'vouchers' },
+      { label: 'Budget Codes', page: 'budget-codes' },
     ],
   },
   {
