@@ -422,24 +422,28 @@ function doFind() {
 function jumpTo(h) { onSelect(h); findOpen.value = false; showToast('已定位：' + h.no, 'info') }
 
 // 手册 Working with Functions：编辑后保存功能位置（Status 为只读指示，改状态统一走 Options > Change Status）
-function saveSelected() {
+async function saveSelected() {
   const s = selected.value
   if (!s || s.__type !== 'function') return
-  const prev = functionService.get(s.functionNo)
-  const oldLocation = prev ? prev.location : ''
-  functionService.update(s.functionNo, {
-    description: s.description,
-    reference: s.reference,
-    parentFunctionNo: s.parentFunctionNo,
-    location: s.location,
-    criticality: s.criticality,
-  })
-  // 手册 P40：function location 改变 → 级联更新已安装组件的 location
-  if (oldLocation && oldLocation !== s.location) {
-    functionService.updateLocation(s.functionNo, s.location)
-    showToast('功能位置地点变更，已级联更新安装组件的 Location', 'info')
+  const oldLocation = s.location
+  try {
+    await functionService.save({
+      ...s,
+      description: s.description,
+      reference: s.reference,
+      parentFunctionNo: s.parentFunctionNo,
+      location: s.location,
+      criticality: s.criticality,
+    })
+    // 手册 P40：function location 改变 → 级联更新已安装组件的 location
+    if (oldLocation && s.location && oldLocation !== s.location) {
+      functionService.updateLocation(s.functionNo, s.location)
+      showToast('功能位置地点变更，已级联更新安装组件的 Location', 'info')
+    }
+    showToast('功能位置已保存：' + s.functionNo, 'ok')
+  } catch (e) {
+    showToast('保存失败：' + (e.message || '后端错误'), 'warn')
   }
-  showToast('功能位置已保存：' + s.functionNo, 'ok')
 }
 // 手册 2 / P38-39 Changing Function Status：Options > Change Status
 function openChangeStatus() {
@@ -613,21 +617,29 @@ function saveFuncCounters() {
   showToast('功能位置计数器已保存：' + s.functionNo, 'ok')
 }
 function openNew() { newForm.value = blankForm(); newOpen.value = true }
-function createFunction() {
+// 手册 Working with Functions：在 Functions Hierarchy 窗口创建新功能位置。
+// 改为 await 后端保存（functionService.save 走 /api/maintenance/functions POST），
+// 确保记录真正入库、刷新后仍在；同步刷新本地缓存与树。
+async function createFunction() {
   const f = newForm.value
   if (!f.functionNo || !f.description) { showToast('请填写 Function No. 与 Description', 'warn'); return }
   if (functionService.get(f.functionNo)) { showToast('该 Function No. 已存在', 'warn'); return }
-  // 新建功能位置归属当前船
-  functionService.add({ ...f, installation: store.installation })
-  newOpen.value = false
-  expandedIds.value = new Set(functionService.listSync().filter((x) => x.installation === store.installation).map((x) => 'fn:' + x.functionNo))
-  showToast('已创建功能位置：' + f.functionNo, 'ok')
+  try {
+    // 新建功能位置归属当前船
+    await functionService.save({ ...f, installation: store.installation })
+    newOpen.value = false
+    expandedIds.value = new Set(functionService.listSync().filter((x) => x.installation === store.installation).map((x) => 'fn:' + x.functionNo))
+    showToast('已创建功能位置：' + f.functionNo, 'ok')
+  } catch (e) {
+    showToast('创建失败：' + (e.message || '后端错误'), 'warn')
+  }
 }
 
 // 手册 2.5：F3 打开查找窗口
 function onKey(e) { if (e.key === 'F3') { e.preventDefault(); onFind() } }
-onMounted(() => {
-  // 初始化：当前船的 Function 节点默认展开
+onMounted(async () => {
+  // 从后端加载当前船的功能位置（确保刷新后已保存的记录仍在），再展开
+  try { await functionService.loadAll() } catch (e) { /* 后端不可用则回落 mock 种子 */ }
   expandedIds.value = new Set(functionService.listSync().filter((f) => f.installation === store.installation).map((f) => 'fn:' + f.functionNo))
   window.addEventListener('keydown', onKey)
 })
