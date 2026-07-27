@@ -672,13 +672,27 @@ function doNew() {
   all.value.push(rec); viewRows.value = [...viewRows.value, rec]; selected.value = rec
   showToast('已新建组件，编辑后 Save', 'ok')
 }
-function doSave() { if (selected.value) showToast('已保存（内存态）', 'ok') }
-function doDelete() {
+async function doSave() {
+  const rec = selected.value
+  if (!rec) return
+  try {
+    const saved = await componentService.save(rec)
+    selected.value = saved
+    applyFilter({})
+    showToast('已保存到后端', 'ok')
+  } catch (e) {
+    showToast('保存失败：' + (e.message || e), 'warn')
+  }
+}
+async function doDelete() {
   if (!selected.value) return
-  const i = all.value.findIndex((r) => r.id === selected.value.id)
-  if (i >= 0) all.value.splice(i, 1)
-  selected.value = null; applyFilter({})
-  showToast('已删除', 'warn')
+  try {
+    await componentService.remove(selected.value)
+    selected.value = null; applyFilter({})
+    showToast('已删除（后端）', 'warn')
+  } catch (e) {
+    showToast('删除失败：' + (e.message || e), 'warn')
+  }
 }
 function register() { showToast('Register as Component：选择 Installation / Department 后生成组件（原型演示）', 'info') }
 // 手册 2 / P43：Options > Copy 复制组件（选条目 + 新编号 + Save）
@@ -733,17 +747,20 @@ function syncRowsFromDb(ids) {
 async function confirmChangeStatus() {
   const s = selected.value
   if (!s) return
-  const res = await componentService.changeStatus(s.id, statusTarget.value, { cascadeSubComponents: statusCascade.value })
-  if (!res.ok) { showToast('状态修改失败', 'warn'); return }
-  statusDialog.value = false
-  syncRowsFromDb(res.updatedIds || [s.id])
-  // 改为 Transferred 且 Stock Wanted 存在引用 → 二次确认
-  if (res.affectedWanted && res.affectedWanted.length) {
-    transferredItems.value = res.affectedWanted
-    transferredDialog.value = true
-    return
+  try {
+    const res = await componentService.changeStatus(s.id, statusTarget.value, { cascadeSubComponents: statusCascade.value })
+    statusDialog.value = false
+    syncRowsFromDb(res.updatedIds || [s.id])
+    // 改为 Transferred 且 Stock Wanted 存在引用 → 二次确认
+    if (res.affectedWanted && res.affectedWanted.length) {
+      transferredItems.value = res.affectedWanted
+      transferredDialog.value = true
+      return
+    }
+    showToast(`状态已改为 ${statusTarget.value}`, 'ok')
+  } catch (e) {
+    showToast('状态修改失败：' + (e.message || e), 'warn')
   }
-  showToast(`状态已改为 ${statusTarget.value}`, 'ok')
 }
 async function confirmTransferred() {
   const s = selected.value
@@ -775,9 +792,16 @@ function confirmOpen() {
   showToast(`已打开组件：${rec.number}`, 'ok')
 }
 function onAction(e) { const a = e.detail?.action; if (a === 'filter') reopenFilter(); if (a === 'new') doNew(); if (a === 'open') doOpen() }
-onMounted(() => { window.addEventListener('amos-action', onAction); applyPreset() })
-// keep-alive 激活时：若带 presetFilter（来自 Component Types 的 View 跳转）则应用并自动选中目标组件，否则保留之前选中的上下文
-onActivated(() => { if (store.presetFilter) applyPreset() })
+onMounted(async () => {
+  window.addEventListener('amos-action', onAction)
+  await componentService.loadAll()
+  applyPreset()
+})
+// keep-alive 激活时：从后端重新加载（反映 Register 等外部变更），再应用 presetFilter
+onActivated(async () => {
+  await componentService.loadAll()
+  applyPreset()
+})
 onBeforeUnmount(() => window.removeEventListener('amos-action', onAction))
 watch(showOpenDialog, (v) => { if (v) nextTick(() => openInputRef.value?.focus()) })
 function statusClass(v) {

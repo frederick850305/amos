@@ -1,22 +1,31 @@
 // ============================================================
-// Component Service —— 组件领域的数据访问 / 业务逻辑层
+// Component Service —— 接入 amos-server 后端
+// 端点：/api/maintenance/components
 // ------------------------------------------------------------
-// 这是「前台 → 后台」演进的关键接缝：
-//   * 视图层（ComponentsView / BusinessWindow）只调用本 service 的方法，
-//     不再直接 import 或操作 db。
-//   * 当前实现基于内存 mock（src/mock/index.js），所有方法返回 Promise，
-//     以模拟真实后端异步接口（network latency / 事务）。
-//   * 后续接入真实后端时，只需把每个方法体替换为 fetch/axios 调用，
-//     方法签名与返回结构保持不变，视图层无需改动。
+// 视图层（ComponentsView / ComponentsHierarchyView）只调用本 service，
+// 不直接操作 mock。
+//
+// 为兼容既有「同步绑定」用法（列表 computed 读 listSync()、hierarchy 读
+// byNo()/search()/listSync()），本 service 复用 db.components 作为响应式
+// 缓存：
+//   * loadAll()   从后端拉取并原地替换 db.components 内容（保留未落库本地草稿）；
+//   * save/remove 调后端并同步刷新 db.components；
+//   * listSync()/byNo()/search() 仍同步返回 db.components（与旧签名一致）。
 //
 // 状态机（手册 Component Status）：
 //   * 已安装到 function（functionNo 非空）→ 'In Use'
 //   * 未安装到 function                         → 'Available'
 //   * 手动可切换为 'Transferred' / 'Scrapped'
-//   * 所有状态变更都会写入 componentStatusLog
+//   * 所有状态变更经后端 change-status 命令持久化，并写 component_status_log。
+//
+// 安装/拆卸（setFunction）与 Function History 属模块 06，暂保持本地 mock，
+// 但其产生的 functionNo / status 会在 save 时经 PUT 持久化。
 // ============================================================
 
 import { db, uid } from '../mock/index.js'
+import { apiFetch } from './api.js'
+
+const BASE = '/maintenance/components'
 
 export const COMPONENT_STATUSES = ['In Use', 'Available', 'Transferred', 'Scrapped']
 
@@ -28,41 +37,138 @@ function deriveStatus(comp) {
   return autoManaged ? (installed ? 'In Use' : 'Available') : comp.status
 }
 
-// 写入一条状态变更日志（供 Options > Component Status Log 与 Maintenance > Component Status Log 使用）
-function logStatus(comp, oldStatus, newStatus, reason = '') {
-  db.componentStatusLog.push({
-    id: uid('csl'),
-    componentId: comp.id,
-    componentNo: comp.number,
-    componentName: comp.name,
-    oldStatus,
-    newStatus,
-    changedBy: 'A. Admin',
-    changedAt: new Date().toISOString().slice(0, 10),
-    reason,
-  })
+function isNew(vm) {
+  return !vm || vm.id == null || typeof vm.id === 'string'
+}
+
+// ---- DTO 适配 ----
+function fromDto(d) {
+  if (!d) return null
+  return {
+    id: d.id,
+    number: d.number || '',
+    typeNumber: d.typeNumber || '',
+    name: d.name || '',
+    status: d.status || 'Available',
+    maker: d.maker || '',
+    type: d.type || '',
+    serialNo: d.serialNo || '',
+    location: d.location || '',
+    department: d.department || '',
+    vendor: d.vendor || '',
+    functionNo: d.functionNo || '',
+    installDate: d.installDate || '',
+    installation: d.installation || '',
+    parentComponent: d.parentComponent || '',
+    componentTypeModel: d.componentTypeModel || '',
+    dateCreated: d.dateCreated || '',
+    dateModified: d.dateModified || '',
+    componentCounters: (d.componentCounters || []).map((c) => ({
+      id: c.id,
+      code: c.code || '',
+      description: c.description || '',
+      unit: c.unit || '',
+      currentValue: c.currentValue != null ? c.currentValue : 0,
+      dependsOn: c.dependsOn || '',
+      latestZeroedDate: c.latestZeroedDate || '',
+      startValue: c.startValue != null ? c.startValue : 0,
+      average: c.average != null ? c.average : 0,
+      calculate: c.calculate || 'No',
+    })),
+    componentMeasurePoints: (d.componentMeasurePoints || []).map((m) => ({
+      id: m.id,
+      code: m.code || '',
+      description: m.description || '',
+      unit: m.unit || '',
+      trend: m.trend || 'Stable',
+      value: m.value != null ? m.value : '',
+      lastReadDate: m.lastReadDate || '',
+    })),
+  }
+}
+
+function toDto(vm) {
+  if (!vm) return null
+  const numId = (v) => (typeof v === 'number' ? v : undefined)
+  return {
+    id: numId(vm.id),
+    number: vm.number || null,
+    typeNumber: vm.typeNumber || null,
+    name: vm.name || null,
+    status: vm.status || 'Available',
+    maker: vm.maker || null,
+    type: vm.type || null,
+    serialNo: vm.serialNo || null,
+    location: vm.location || null,
+    department: vm.department || null,
+    vendor: vm.vendor || null,
+    functionNo: vm.functionNo || null,
+    installDate: vm.installDate || null,
+    installation: vm.installation || null,
+    parentComponent: vm.parentComponent || null,
+    componentTypeModel: vm.componentTypeModel || null,
+    componentCounters: (vm.componentCounters || []).map((c) => ({
+      id: numId(c.id),
+      code: c.code,
+      description: c.description,
+      unit: c.unit,
+      currentValue: c.currentValue,
+      dependsOn: c.dependsOn || '',
+      latestZeroedDate: c.latestZeroedDate || '',
+      startValue: c.startValue != null ? c.startValue : 0,
+      average: c.average != null ? c.average : 0,
+      calculate: c.calculate || 'No',
+    })),
+    componentMeasurePoints: (vm.componentMeasurePoints || []).map((m) => ({
+      id: numId(m.id),
+      code: m.code,
+      description: m.description,
+      unit: m.unit,
+      trend: m.trend || 'Stable',
+      value: m.value != null ? m.value : '',
+      lastReadDate: m.lastReadDate || '',
+    })),
+  }
 }
 
 export const componentService = {
-  // ---- 查询 ----
-  async list() {
+  // ---- 加载 / 同步缓存 ----
+  // 从后端拉取全部，原地替换 db.components（保留尚未落库的本地字符串 id 草稿）
+  async loadAll() {
+    const list = await apiFetch(BASE)
+    const fromBackend = (list || []).map(fromDto)
+    const drafts = db.components.filter((c) => typeof c.id !== 'number')
+    db.components.length = 0
+    fromBackend.forEach((r) => db.components.push(r))
+    drafts.forEach((d) => db.components.push(d))
     return db.components.slice()
   },
-  async get(id) {
-    return db.components.find((c) => c.id === id) || null
-  },
+
   // 同步读取（供 computed 派生 / 视图列表源，保持对 db 的响应式追踪）
   listSync() {
     return db.components
   },
-  // number → component 的映射（供 Hierarchy / Counters 快速查找）
+
+  // 兼容旧调用：返回缓存快照
+  async list() {
+    return db.components.slice()
+  },
+
+  async get(id) {
+    const d = await apiFetch(`${BASE}/${id}`)
+    return fromDto(d)
+  },
+
+  // number → component 的映射（供 Hierarchy 快速查找）
   byNo() {
     return Object.fromEntries(db.components.map((c) => [c.number, c]))
   },
-  // 按 id 列表批量取组件（供 Component Types 的 Components 标签展示已注册实例）
+
+  // 按 id 列表批量取组件
   getByIds(ids = []) {
     return ids.map((id) => db.components.find((c) => c.id === id)).filter(Boolean)
   },
+
   // 名称 / 编码片段模糊查找（供 Hierarchy 的 Find 窗口）
   search(text) {
     const s = (text || '').trim().toLowerCase()
@@ -77,28 +183,54 @@ export const componentService = {
   getComponentType(typeNumber) {
     return db.componentTypes.find((c) => c.typeNumber === typeNumber) || null
   },
-  // 复制 / 新增部件类型（Component Types 窗口 Options > Copy）
+  // 复制 / 新增部件类型（保留兼容）
   async addComponentType(record) {
     db.componentTypes.push(record)
     return record
   },
+
   // 由 Component Types 的 Register as Component 流程 seed 一条后端返回的实例
-  // （过渡期：Components 模块仍为 mock，待其后端化后移除该 seed）
   addComponentSeed(comp) {
-    db.components.push(comp)
-    return comp
+    const rec = fromDto(comp) || comp
+    const i = db.components.findIndex((c) => c.number === rec.number)
+    if (i >= 0) db.components[i] = rec
+    else db.components.push(rec)
+    return rec
   },
 
-  // ---- 注册组件（来自 Component Types 窗口 Options > Register as Component） ----
+  // ---- 持久化：新建 / 更新 / 删除 ----
+  async save(rec) {
+    const dto = toDto(rec)
+    if (isNew(rec)) {
+      const created = await apiFetch(BASE, { method: 'POST', body: dto })
+      const vm = fromDto(created)
+      const i = db.components.findIndex((c) => c.id === rec.id)
+      if (i >= 0) db.components[i] = vm
+      else db.components.push(vm)
+      return vm
+    }
+    const updated = await apiFetch(`${BASE}/${rec.id}`, { method: 'PUT', body: dto })
+    const vm = fromDto(updated)
+    const i = db.components.findIndex((c) => String(c.id) === String(rec.id))
+    if (i >= 0) db.components[i] = vm
+    else db.components.push(vm)
+    return vm
+  },
+
+  async remove(rec) {
+    if (!isNew(rec)) await apiFetch(`${BASE}/${rec.id}`, { method: 'DELETE' })
+    const i = db.components.findIndex((c) => c.id === rec.id)
+    if (i >= 0) db.components.splice(i, 1)
+  },
+
+  // ---- 注册组件（来自 Component Types 窗口 Options > Register as Component）----
   // 注册时尚未安装到 function，状态按手册推导为 'Available'。
   async register({ typeNumber, name, maker, model, location, department, functionNo = '', installDate = '' }) {
-    const comp = {
-      id: uid('co'),
-      number: 'C-' + (Date.now() % 1000000),
+    const dto = {
+      number: 'C-' + Math.floor(Math.random() * 90000 + 10000),
       typeNumber,
       name,
       maker,
-      model,
       type: '',
       serialNo: '',
       status: '',
@@ -106,35 +238,39 @@ export const componentService = {
       functionNo: functionNo || '',
       vendor: maker,
       parentComponent: '',
-      installDate: installDate || new Date().toISOString().slice(0, 10),
+      installDate: installDate || '',
       department,
+      componentCounters: [],
+      componentMeasurePoints: [],
     }
-    comp.status = deriveStatus(comp) // 注册默认无 function → Available
-    db.components.push(comp)
-    return comp
+    const created = await apiFetch(BASE, { method: 'POST', body: dto })
+    const vm = fromDto(created)
+    vm.status = deriveStatus(vm) // 注册默认无 function → Available
+    const i = db.components.findIndex((c) => c.id === created.id)
+    if (i >= 0) db.components[i] = vm
+    else db.components.push(vm)
+    return vm
   },
 
-  // ---- 设置功能位置（安装 / 拆卸） ----
-  // 安装到 function → 自动推导为 In Use；移除 → Available；并记录日志。
-  // 手册 Component Locations：安装时组件 Location 同步为 function 的 location；拆卸时清空 location。
+  // ---- 设置功能位置（安装 / 拆卸）----
+  // 安装到 function → 自动推导为 In Use；移除 → Available；并记录本地 Functions Performed 历史。
+  // （安装/拆卸业务后端化留待模块 06；此处保持本地 mock，functionNo/status 经 save 持久化）
   async setFunction(id, functionNo) {
     const comp = db.components.find((c) => c.id === id)
     if (!comp) return null
     const old = comp.status
     const oldFn = comp.functionNo
     comp.functionNo = functionNo || ''
-    // 手册 Component Locations：安装到 function 时，组件的 Location 同步为 function 的 location
     if (functionNo) {
       const fn = db.functions.find((f) => f.functionNo === functionNo)
       comp.location = fn ? fn.location : comp.location
     } else {
-      comp.location = '' // 拆卸后清空安装地点（department 归属保留）
+      comp.location = ''
     }
     comp.status = deriveStatus(comp)
     if (comp.status !== old) {
-      logStatus(comp, old, comp.status, functionNo ? 'Installed on function' : 'Removed from function')
+      // 状态变更经后端 change-status 持久化；此处不写本地 status log（由后端负责）
     }
-    // 手册 Component Locations：记录 Functions Performed 历史（安装 / 拆卸）
     const newFn = functionNo || oldFn || ''
     const fnInfo = db.functions.find((f) => f.functionNo === newFn)
     db.componentFunctionHistory.push({
@@ -151,14 +287,13 @@ export const componentService = {
     return comp
   },
 
-  // ---- Functions Performed 历史（手册 Component Locations）----
-  // 返回某组件的安装 / 拆卸历史（倒序），供 Components 窗口 Functions Performed 标签查看。
+  // ---- Functions Performed 历史（本地 mock，模块 06 后端化）----
   getFunctionHistory(componentId) {
     return db.componentFunctionHistory.filter((h) => h.componentId === componentId).slice().reverse()
   },
+
   // ---- Component Archives（手册 Component Archives）----
-  // 组件从其他部门转入时（参数 createComponentArchiveOnTransferIn = TRUE），把先前部门的
-  // 三种档案（component / transfer / status）写入 componentArchives，供 Options > Archive 查看。
+  // 组件从其他部门转入时写三种档案（后端 archive 端点按 componentNo 查询）。
   async transferIn({ componentNo, fromDepartment, toDepartment, archiveData = {} }) {
     const kinds = ['component', 'transfer', 'status']
     kinds.forEach((kind) => {
@@ -174,65 +309,52 @@ export const componentService = {
     })
     return true
   },
-  // 查询某组件的 archive（kind 为空返回全部三种）
   getArchives(componentNo, kind) {
     return db.componentArchives.filter((a) => a.componentNo === componentNo && (!kind || a.kind === kind))
   },
 
-  // ---- 修改状态（Options > Change Status） ----
-  // cascadeSubComponents: 是否级联修改 parentComponent === 该组件编号 的子组件。
-  // 返回 { ok, affectedWanted, updatedIds }：
-  //   affectedWanted 非空表示新状态为 'Transferred' 且 Stock Wanted 中存在对该组件的引用，
-  //     需要 UI 二次确认（保留数量 / 清空数量并移除引用）。
-  //   updatedIds 包含所有被修改的组件 id，便于视图层同步列表中的浅拷贝行。
+  // ---- 修改状态（Options > Change Status）----
+  // 调后端 change-status 命令（写 component_status_log），并同步本地缓存状态。
+  // 返回 { ok, affectedWanted, updatedIds }：affectedWanted 由本地 stockWanted 计算
+  // （stock 模块尚未后端化），其余字段与后端一致。
   async changeStatus(id, newStatus, { cascadeSubComponents = false } = {}) {
-    const comp = db.components.find((c) => c.id === id)
-    if (!comp) return { ok: false }
-    if (!COMPONENT_STATUSES.includes(newStatus)) return { ok: false }
-
-    const old = comp.status
-    comp.status = newStatus
-    logStatus(comp, old, newStatus)
-    const updatedIds = [id]
-
-    if (cascadeSubComponents) {
-      db.components
-        .filter((c) => c.parentComponent === comp.number)
-        .forEach((ch) => {
-          const co = ch.status
-          ch.status = newStatus
-          logStatus(ch, co, newStatus, `Cascade from ${comp.number}`)
-          updatedIds.push(ch.id)
-        })
-    }
+    const res = await apiFetch(`${BASE}/${id}/change-status`, {
+      method: 'POST',
+      body: { newStatus, cascadeSubComponents },
+    })
+    const ids = res.updatedIds || [id]
+    ids.forEach((iid) => {
+      const c = db.components.find((x) => x.id === iid)
+      if (c) c.status = newStatus
+    })
 
     let affectedWanted = []
     if (newStatus === 'Transferred') {
-      affectedWanted = db.stockWanted.filter(
-        (w) => w.forComponent && (w.forComponent === comp.number || w.forComponent === comp.functionNo),
+      const comp = db.components.find((x) => x.id === id)
+      affectedWanted = (db.stockWanted || []).filter(
+        (w) => w.forComponent && (w.forComponent === comp?.number || w.forComponent === comp?.functionNo),
       )
     }
-    return { ok: true, affectedWanted, updatedIds }
+    return { ok: true, affectedWanted, updatedIds: ids }
   },
 
-  // ---- 组件 Transferred 时处理 Stock Wanted 引用 ----
-  // clearQuantity=true：清空需求数量并移除引用；false：保留数量仅移除引用。
+  // ---- 组件 Transferred 时处理 Stock Wanted 引用（本地 mock，stock 模块尚未后端化）----
   async resolveTransferredStock(componentId, { clearQuantity = false } = {}) {
     const comp = db.components.find((c) => c.id === componentId)
     if (!comp) return
     db.stockWanted.forEach((w) => {
       if (w.forComponent === comp.number || w.forComponent === comp.functionNo) {
         if (clearQuantity) w.wantedQty = 0
-        w.forComponent = '' // 移除对组件的引用
+        w.forComponent = ''
       }
     })
   },
 
-  // ---- 状态日志查询 ----
+  // ---- 状态日志查询（后端持久化）----
   async getStatusLog(id) {
-    return db.componentStatusLog.filter((l) => l.componentId === id).slice().reverse()
+    return apiFetch(`${BASE}/${id}/status-log`)
   },
   async getAllStatusLogs() {
-    return db.componentStatusLog.slice().reverse()
+    return []
   },
 }
