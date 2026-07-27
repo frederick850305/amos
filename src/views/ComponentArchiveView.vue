@@ -26,7 +26,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { store } from '../store.js'
 import { componentService } from '../services/componentService.js'
 
@@ -38,8 +38,13 @@ const kindLabels = {
 }
 const kindLabel = (k) => kindLabels[k] || k
 const title = computed(() => (store.archiveKind ? kindLabels[store.archiveKind] : 'Component Archives'))
-// kind 为空时返回全部三种档案
-const rows = computed(() => componentService.getArchives(store.archiveComponentNo, store.archiveKind))
+// kind 为空时返回全部三种档案；数据来自后端 GET /{id}/archive
+const rows = ref([])
+async function refresh() {
+  rows.value = await componentService.getArchives(store.archiveComponentNo, store.archiveKind)
+}
+onMounted(refresh)
+watch(() => [store.archiveComponentNo, store.archiveKind], refresh)
 </script>
 
 <style scoped>

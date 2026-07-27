@@ -554,14 +554,35 @@ function scopeRows(rows) {
   return scopeByDepartment(rows)
 }
 
-function applyFilter(c) {
+// 后端可过滤的字段（installation/department 由当前作用域注入；其余来自过滤条件）
+const SERVER_FILTER_KEYS = ['number', 'name', 'status', 'typeNumber', 'functionNo']
+async function applyFilter(c) {
   showFilter.value = false
   const crit = c || {}
   // 提取 Global Search 状态
   globalMode.value = !!crit._globalSearch
   globalDepts.value = crit._globalDepts || []
-  const filtered = all.value.filter((r) => matchRow(r, [...filterBasic, ...filterAdvanced], crit))
-  viewRows.value = scopeRows(filtered).map((r) => ({
+  const hasServer = SERVER_FILTER_KEYS.some((k) => crit[k])
+  const hasAny = [...SERVER_FILTER_KEYS, 'location'].some((k) => crit[k])
+  let rows
+  if (hasServer) {
+    const params = { installation: store.installation }
+    if (!globalMode.value && store.department) params.department = store.department
+    if (crit.status) params.status = crit.status
+    if (crit.typeNumber) params.typeNumber = crit.typeNumber
+    if (crit.functionNo) params.functionNo = crit.functionNo
+    if (crit.number) params.q = crit.number
+    else if (crit.name) params.q = crit.name
+    rows = await componentService.query(params)
+    // location 后端未覆盖，客户端用 matchRow 补足；其余字段后端已过滤，再校验一遍无害
+    rows = rows.filter((r) => matchRow(r, [...filterBasic, ...filterAdvanced], crit))
+  } else if (hasAny) {
+    // 仅 location 等纯客户端字段：直接走本地缓存
+    rows = all.value.filter((r) => matchRow(r, [...filterBasic, ...filterAdvanced], crit))
+  } else {
+    rows = all.value
+  }
+  viewRows.value = scopeRows(rows).map((r) => ({
     ...r,
     _instDept: (r.department || store.department), // Global 模式下的 Inst/Dept 列值
   }))
