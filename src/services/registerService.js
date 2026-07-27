@@ -29,9 +29,24 @@ const PATHS = {
 
 const reg = (path, opts) => apiFetch('/register/' + path, opts)
 
-// 列表（GET 全量；数据量小，前端负责搜索/过滤）
-export function list(key) {
-  return reg(PATHS[key])
+// 列表（GET；后端 PR #8 分页增强）
+// params 可选：{ page, size, sort, q, status, installation, parentId, active }
+//   - 传 page 或 size → 后端返回 Spring Page 信封 {content,totalElements,totalPages,size,number}
+//   - 不传 → 返回数组（向后兼容 / 演示模式回落）
+// 注意：lookup（makers/vendors/...）调用一律不传分页参数，拿全量数组。
+export function list(key, params = {}) {
+  const qs = new URLSearchParams()
+  const add = (k, v) => { if (v != null && v !== '') qs.set(k, String(v)) }
+  add('page', params.page)
+  add('size', params.size)
+  add('sort', params.sort)
+  add('q', params.q)
+  add('status', params.status)
+  add('installation', params.installation)
+  add('parentId', params.parentId)
+  add('active', params.active)
+  const query = qs.toString()
+  return reg(PATHS[key] + (query ? '?' + query : ''))
 }
 // 新建（POST）；payload 不应含 id（后端生成）
 export function create(key, payload) {

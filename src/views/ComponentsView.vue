@@ -374,15 +374,15 @@ const tabs = [
     { key: 'typeNumber', label: 'Type Number', type: 'lookup', lookupKey: 'componentTypes' },
     { key: 'name', label: 'Name' },
     { key: 'serialNo', label: 'Serial No.' },
-    { key: 'maker', label: 'Maker' },
+    { key: 'maker', label: 'Maker', type: 'lookup', lookupKey: 'makers' },
     { key: 'type', label: 'Type' },
     { key: 'functionNo', label: 'Function', type: 'lookup', lookupKey: 'functions' },
     // 手册（Component Status）：状态在 General tab 仅作指示，修改统一走 Options > Change Status
     { key: 'status', label: 'Status', type: 'readonly' },
   ] },
   { id: 'type', label: 'Type Details', fields: [
-    { key: 'vendor', label: 'Vendor' },
-    { key: 'location', label: 'Location' },
+    { key: 'vendor', label: 'Vendor', type: 'lookup', lookupKey: 'vendors' },
+    { key: 'location', label: 'Location', type: 'lookup', lookupKey: 'locations' },
     { key: 'parentComponent', label: 'Parent Component' },
     { key: 'installDate', label: 'Install Date', type: 'date' },
     { key: 'componentTypeModel', label: 'Component Type Model' },

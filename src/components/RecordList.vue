@@ -1,7 +1,7 @@
 <template>
   <div class="record-list">
     <div class="rl-toolbar">
-      <input v-model="q" class="amos-input" style="max-width:280px" placeholder="在列表中搜索…" />
+      <input v-if="searchable" v-model="q" class="amos-input" style="max-width:280px" placeholder="在列表中搜索…" />
       <span class="spacer" />
       <span v-if="selectable" class="muted">已选 {{ checkedList.length }} 条</span>
       <span class="muted">{{ filtered.length }} / {{ rows.length }} 条</span>
@@ -76,6 +76,8 @@ const props = defineProps({
   selectable: { type: Boolean, default: false },
   checked: { type: Array, default: () => [] },
   preselectId: { type: String, default: '' },
+  // 是否显示内置搜索框；由外层（如 RegisterWindow 自行管理服务端搜索/分页）关闭
+  searchable: { type: Boolean, default: true },
   // 手册 Fleet 场景：按某字段（如 installation = 船）对列表分组，每组前插入不可选中的分组标题行
   groupBy: { type: String, default: '' },
 })
