@@ -85,7 +85,7 @@ const funcByNo = computed(() => functionService.byNo())
 
 const roots = computed(() => {
   const inst = store.installation
-  const funcs = functionService.list().filter((f) => f.installation === inst)
+  const funcs = functionService.listSync().filter((f) => f.installation === inst)
   const comps = componentService.listSync().filter((c) => c.installation === inst)
   const funcNodes = {}
   funcs.forEach((f) => {
@@ -134,10 +134,6 @@ function onToggle(id) {
   else s.add(id)
   expandedIds.value = s
 }
-// 初始化：Function 节点默认展开
-onMounted(() => {
-  expandedIds.value = new Set(functionService.list().filter((f) => f.installation === store.installation).map((f) => 'fn:' + f.functionNo))
-})
 function openComponent(no) {
   setPresetFilter({ number: no })
   openWindow('components')
@@ -170,7 +166,7 @@ function jumpTo(h) {
 function onKey(e) { if (e.key === 'F3') { e.preventDefault(); onFind() } }
 onMounted(() => {
   // 初始化：Function 节点默认展开
-  expandedIds.value = new Set(functionService.list().filter((f) => f.installation === store.installation).map((f) => 'fn:' + f.functionNo))
+  expandedIds.value = new Set(functionService.listSync().filter((f) => f.installation === store.installation).map((f) => 'fn:' + f.functionNo))
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
