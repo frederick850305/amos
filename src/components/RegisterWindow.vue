@@ -13,8 +13,10 @@
         <button class="amos-btn sm" @click="onSearch">Search</button>
         <button class="amos-btn sm" @click="doNew">New</button>
         <button class="amos-btn sm primary" @click="doSave" :disabled="!selected">Save</button>
-        <button class="amos-btn sm" @click="doDelete" :disabled="!selected || isNew(selected)">Delete</button>
+        <button class="amos-btn sm" @click="doDelete" :disabled="!selected || isNew(selected) || selectedInactive">Delete</button>
+        <button class="amos-btn sm" @click="doReactivate" :disabled="!selected || isNew(selected) || !selectedInactive">Reactivate</button>
         <button class="amos-btn sm" @click="doRefresh">Refresh</button>
+        <label class="rw-toggle"><input type="checkbox" v-model="showInactive" @change="onToggleInactive" /> 显示已停用</label>
       </div>
     </div>
 
@@ -44,6 +46,7 @@
           ref="listRef"
           :columns="config.columns"
           :rows="rows"
+          :inactive-matcher="isInactiveRow"
           :searchable="false"
           row-key="id"
           :preselect-id="preselectId"
@@ -116,6 +119,17 @@ const statusClass = computed(() => {
   return 'gray'
 })
 
+// 路线 B：默认隐藏已停用记录；仅当打开“显示已停用”时向后端请求全部（含失效）记录
+const showInactive = ref(false)
+
+function isActive(row) {
+  if (!row || !config.value) return true
+  const v = row[config.value.statusField]
+  return config.value.statusKind === 'boolean' ? v === true : v !== 'INACTIVE'
+}
+const selectedInactive = computed(() => (selected.value ? !isActive(selected.value) : false))
+function isInactiveRow(row) { return !isActive(row) }
+
 function isNew(row) {
   return !row || String(row.id).startsWith('new_')
 }
@@ -129,6 +143,9 @@ async function load() {
       size: size.value,
       sort: sort.value,
       q: q.value || undefined,
+      ...(showInactive.value ? {} : (config.value.statusKind === 'boolean'
+        ? { active: true }
+        : { status: 'ACTIVE' })),
     })
     // 后端返回 Spring Page 信封（带 page/size 时）或数组（兼容/演示回落）
     if (data && !Array.isArray(data) && Array.isArray(data.content)) {
@@ -205,20 +222,39 @@ async function doSave() {
 async function doDelete() {
   if (!selected.value) return showToast('请先选择记录', 'warn')
   if (isNew(selected.value)) { selected.value = null; return }
-  const row = selected.value
-  const deletedId = row.id
   try {
-    await registerService.remove(store.activeKey, row.id)
+    await registerService.remove(store.activeKey, selected.value.id)
     await load()
-    // 区分物理删除（记录消失）与软删（仍残留在列表中、仅置为 Inactive）
-    const stillThere = rows.value.some((r) => r.id === deletedId)
     selected.value = null
     await refreshCache()
-    showToast(stillThere ? '已停用该记录' : '已删除该记录', stillThere ? 'warn' : 'ok')
+    showToast('已停用该记录', 'warn')
   } catch (e) {
-    showToast('删除失败：' + (e.message || '后端错误'), 'warn')
+    showToast('停用失败：' + (e.message || '后端错误'), 'warn')
   }
 }
+
+// 路线 B：重新启用已停用的记录（置 active=true / status=ACTIVE）
+async function doReactivate() {
+  if (!selected.value || isNew(selected.value)) return showToast('请先选择记录', 'warn')
+  if (isActive(selected.value)) return showToast('该记录已处于启用状态', 'info')
+  const c = config.value
+  const payload = { ...selected.value }
+  delete payload.id
+  payload[c.statusField] = c.statusKind === 'boolean' ? true : 'ACTIVE'
+  try {
+    const saved = await registerService.update(store.activeKey, selected.value.id, payload)
+    await load()
+    const found = rows.value.find((r) => r.id === saved.id)
+    selected.value = found ? reactive({ ...found }) : null
+    preselectId.value = found ? String(saved.id) : ''
+    await refreshCache()
+    showToast('已启用该记录', 'ok')
+  } catch (e) {
+    showToast('启用失败：' + (e.message || '后端错误'), 'warn')
+  }
+}
+
+function onToggleInactive() { page.value = 0; load() }
 
 async function doRefresh() {
   await load()
@@ -261,6 +297,7 @@ onActivated(load)
 .bw-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: flex-end; flex: 1; }
 .bw-actions .amos-input { flex-shrink: 0; }
 .bw-actions .amos-btn { flex-shrink: 0; }
+.rw-toggle { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #6b7c92; cursor: pointer; user-select: none; }
 /* 分页条 */
 .bw-pager .rec-count { white-space: nowrap; }
 .bw-pager { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--amos-border); background: #f7f9fc; font-size: 12px; }

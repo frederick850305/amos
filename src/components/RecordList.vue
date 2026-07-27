@@ -36,7 +36,7 @@
             <tr
               v-for="row in grp.rows"
               :key="rowId(row)"
-              :class="{ selected: rowId(row) === selectedId }"
+              :class="rowClasses(row)"
               @click="select(row)"
               @dblclick="$emit('open', row)"
             >
@@ -80,6 +80,8 @@ const props = defineProps({
   searchable: { type: Boolean, default: true },
   // 手册 Fleet 场景：按某字段（如 installation = 船）对列表分组，每组前插入不可选中的分组标题行
   groupBy: { type: String, default: '' },
+  // 路线 B：传入判定函数 (row) => boolean，命中者在列表中置灰（已停用 / 失效记录）
+  inactiveMatcher: { type: Function, default: null },
 })
 const emit = defineEmits(['select', 'open', 'update:checked'])
 
@@ -209,6 +211,12 @@ function select(row) {
   selectedId.value = rowId(row)
   emit('select', row)
 }
+function rowClasses(row) {
+  return {
+    selected: rowId(row) === selectedId.value,
+    inactive: props.inactiveMatcher ? props.inactiveMatcher(row) : false,
+  }
+}
 function tagClass(val) {
   if (typeof val !== 'string') return 'gray'
   const v = val.toLowerCase()
@@ -244,4 +252,8 @@ defineExpose({ clearSelection, selectedId, preselect })
 .grp-header td { background: linear-gradient(180deg, #eaf1f9, #e1ebf5); border-top: 1px solid var(--amos-border); padding: 5px 10px; }
 .grp-title { font-weight: 700; color: #2c486a; font-size: 12.5px; }
 .grp-count { margin-left: 8px; font-size: 11px; color: #6b7c92; background: #fff; border: 1px solid var(--amos-border); border-radius: 999px; padding: 0 8px; }
+/* 路线 B：已停用 / 失效记录置灰，区别于正常记录 */
+tr.inactive { color: #9aa7b5; background: #f5f6f8; }
+tr.inactive td { opacity: .7; }
+tr.inactive:hover { background: #eef0f3; }
 </style>
