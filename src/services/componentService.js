@@ -154,6 +154,17 @@ export const componentService = {
     return db.components.slice()
   },
 
+  // 服务端列表过滤：转发 installation/department/status/typeNumber/functionNo/q 到后端 list()
+  async query(filters = {}) {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(filters)) {
+      if (v != null && v !== '') qs.set(k, v)
+    }
+    const q = qs.toString()
+    const list = await apiFetch(`${BASE}${q ? '?' + q : ''}`)
+    return (list || []).map(fromDto)
+  },
+
   async get(id) {
     const d = await apiFetch(`${BASE}/${id}`)
     return fromDto(d)
@@ -309,8 +320,15 @@ export const componentService = {
     })
     return true
   },
-  getArchives(componentNo, kind) {
-    return db.componentArchives.filter((a) => a.componentNo === componentNo && (!kind || a.kind === kind))
+  // 组件档案查询改为后端持久化（GET /{id}/archive?kind=）。
+  // 后端按 componentNo 查询，但路径需组件 id，故先用 number 在缓存反查 id。
+  async getArchives(componentNo, kind) {
+    if (!componentNo) return []
+    const comp = db.components.find((c) => c.number === componentNo)
+    if (!comp || typeof comp.id !== 'number') return []
+    let path = `${BASE}/${comp.id}/archive`
+    if (kind) path += `?kind=${encodeURIComponent(kind)}`
+    return apiFetch(path)
   },
 
   // ---- 修改状态（Options > Change Status）----
@@ -354,7 +372,8 @@ export const componentService = {
   async getStatusLog(id) {
     return apiFetch(`${BASE}/${id}/status-log`)
   },
+  // 全局状态日志（Maintenance > Component Status Log 独立窗口）
   async getAllStatusLogs() {
-    return []
+    return apiFetch(`${BASE}/status-log`)
   },
 }
