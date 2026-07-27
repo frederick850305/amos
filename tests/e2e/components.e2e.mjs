@@ -38,6 +38,24 @@ function check(name, cond) {
   if (!cond) failures++
 }
 
+async function dumpOverlays(page, tag) {
+  try {
+    const info = await page.evaluate(() =>
+      [...document.querySelectorAll('.open-dialog-overlay')].map((e) => ({
+        text: e.innerText.slice(0, 120),
+        style: e.getAttribute('style') || '',
+      })),
+    )
+    log(`[${tag}] open-dialog-overlays (${info.length}):`, JSON.stringify(info))
+    const pop = await page.evaluate(
+      () => !!document.querySelector('.bw-options-popup'),
+    )
+    log(`[${tag}] bw-options-popup present:`, pop)
+  } catch (e) {
+    log(`[${tag}] dump failed:`, e.message)
+  }
+}
+
 async function apiLogin() {
   const r = await fetch(`${API}/api/auth/login`, {
     method: 'POST',
@@ -55,6 +73,13 @@ async function apiJson(method, path, token, body) {
   })
   const t = await r.text()
   return { status: r.status, body: t ? JSON.parse(t) : null }
+}
+
+// 打开 Components 窗口的 Options 浮层（稳健：scoped 选择器 + 显式等待）
+async function openOptions(page) {
+  const btn = page.locator('.bw-options button').first()
+  await btn.click()
+  await page.waitForSelector('.bw-options-popup', { state: 'visible', timeout: 5000 })
 }
 
 let vite
@@ -122,19 +147,35 @@ try {
 
   // 断言 3：Change Status → Status Log 状态变更持久化
   await page.locator('tr:has-text("' + ER_NO + '")').first().click()
-  await page.getByText('Options', { exact: false }).first().click()
-  await page.getByText('Change Status', { exact: true }).first().click()
-  await page.waitForSelector('.open-dialog.reg select', { timeout: 5000 })
-  await page.selectOption('.open-dialog.reg select', 'In Use')
-  await page.locator('.open-dialog.reg').getByText('OK', { exact: true }).click()
+  await page.waitForTimeout(200)
+
+  try {
+    await openOptions(page)
+    await page.locator('.bw-options-popup').getByText('Change Status', { exact: true }).click()
+    await page.waitForSelector('.open-dialog.reg', { state: 'visible', timeout: 5000 })
+    await page.locator('.open-dialog.reg select').selectOption('In Use')
+    await page.locator('.open-dialog.reg').getByText('OK', { exact: true }).click()
+    // 等待状态对话框关闭
+    await page.waitForSelector('.open-dialog.reg', { state: 'hidden', timeout: 5000 })
+    check('Change Status 对话框已提交并关闭', true)
+  } catch (e) {
+    await dumpOverlays(page, 'change-status')
+    throw e
+  }
+
   // 打开 Component Status Log
-  await page.getByText('Options', { exact: false }).first().click()
-  await page.getByText('Component Status Log', { exact: true }).first().click()
-  await page.waitForFunction(
-    () => document.body.innerText.includes('In Use') && document.body.innerText.includes('Available'),
-    { timeout: 10000 },
-  )
-  check('Component Status Log 显示 Available → In Use（状态变更已持久化）', true)
+  try {
+    await openOptions(page)
+    await page.locator('.bw-options-popup').getByText('Component Status Log', { exact: true }).click()
+    await page.waitForFunction(
+      () => document.body.innerText.includes('In Use') && document.body.innerText.includes('Available'),
+      { timeout: 10000 },
+    )
+    check('Component Status Log 显示 Available → In Use（状态变更已持久化）', true)
+  } catch (e) {
+    await dumpOverlays(page, 'status-log')
+    throw e
+  }
 
   check('无运行时 pageerror', pageErrors.length === 0)
   if (pageErrors.length) log('pageerrors:', pageErrors)
