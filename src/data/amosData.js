@@ -151,6 +151,22 @@ export const menu = [
     ],
   },
   {
+    // 手册模块 2：Registers —— 基础主数据寄存器，集中入口（各 register 走通用 Register 管理窗口）
+    label: 'Registers',
+    items: [
+      { label: 'Makers', page: 'makers' },
+      { label: 'Vendors', page: 'vendors' },
+      { label: 'Locations', page: 'locations' },
+      { label: 'Function Criticality', page: 'function-criticalities' },
+      { label: 'Units', page: 'units' },
+      { label: 'Currencies', page: 'currencies' },
+      { label: 'Job Classes', page: 'job-classes' },
+      { label: 'Trades', page: 'trades' },
+      { label: 'Disciplines', page: 'disciplines' },
+      { label: 'Budget Codes', page: 'budget-codes' },
+    ],
+  },
+  {
     label: 'Stock',
     items: [
       { label: 'Stock Types', page: 'stock-types' },
