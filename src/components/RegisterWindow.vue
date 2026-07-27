@@ -206,12 +206,15 @@ async function doDelete() {
   if (!selected.value) return showToast('请先选择记录', 'warn')
   if (isNew(selected.value)) { selected.value = null; return }
   const row = selected.value
+  const deletedId = row.id
   try {
     await registerService.remove(store.activeKey, row.id)
     await load()
+    // 区分物理删除（记录消失）与软删（仍残留在列表中、仅置为 Inactive）
+    const stillThere = rows.value.some((r) => r.id === deletedId)
     selected.value = null
     await refreshCache()
-    showToast('已停用（软删）该记录', 'warn')
+    showToast(stillThere ? '已停用该记录' : '已删除该记录', stillThere ? 'warn' : 'ok')
   } catch (e) {
     showToast('删除失败：' + (e.message || '后端错误'), 'warn')
   }
