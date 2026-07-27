@@ -34,6 +34,24 @@
       </div>
     </div>
 
+    <!-- Register as Component 对话框 -->
+    <div v-if="regOpen" class="open-dialog-overlay">
+      <div class="open-dialog">
+        <h3>Register as Component — {{ selected?.typeNumber }}</h3>
+        <p class="muted">将该组件类型注册为一个实际组件实例（状态默认 Available）。</p>
+        <div class="amos-field"><label>Number</label><div class="ctrl"><input class="amos-input" v-model="regForm.number" placeholder="如 C-1001-1" /></div></div>
+        <div class="amos-field"><label>Name</label><div class="ctrl"><input class="amos-input" v-model="regForm.name" /></div></div>
+        <div class="amos-field"><label>Location</label><div class="ctrl"><input class="amos-input" v-model="regForm.location" /></div></div>
+        <div class="amos-field"><label>Department</label><div class="ctrl"><input class="amos-input" v-model="regForm.department" /></div></div>
+        <div class="amos-field"><label>Installation</label><div class="ctrl"><input class="amos-input" v-model="regForm.installation" /></div></div>
+        <div class="amos-field"><label>Serial No.</label><div class="ctrl"><input class="amos-input" v-model="regForm.serialNo" /></div></div>
+        <div class="od-actions">
+          <button class="amos-btn" @click="regOpen = false">Cancel</button>
+          <button class="amos-btn primary" @click="confirmRegister">Register</button>
+        </div>
+      </div>
+    </div>
+
     <div v-else class="bw-body">
       <section class="bw-list">
         <RecordList ref="listRef" :columns="columns" :rows="viewRows" row-key="id" @select="onSelect" @open="onOpen" />
@@ -43,7 +61,7 @@
           <strong>{{ selected.typeNumber }} — {{ selected.name }}</strong>
           <span class="tag" :class="statusClass(selected.status)">{{ selected.status }}</span>
         </div>
-        <RecordDetail :tabs="tabs" :model="selected" @change="onDetailChange" @subaction="onSubAction">
+        <RecordDetail :tabs="tabs" :model="selected" :preset-tab-id="presetTab" @change="onDetailChange" @subaction="onSubAction">
           <!-- 手册 P57 / 截图：Jobs 标签页 —— 展示该组件类型已关联的类型级作业（JD 视角） -->
           <!-- New → 创建 ComponentType 作业并跳入 Component Type Jobs 窗口 -->
           <!-- View → 跳转 Component Type Jobs 窗口并定位 -->
@@ -226,6 +244,7 @@ import FilterDialog from '../components/FilterDialog.vue'
 import RecordList from '../components/RecordList.vue'
 import RecordDetail from '../components/RecordDetail.vue'
 import { componentService } from '../services/componentService.js'
+import { componentTypeService } from '../services/componentTypeService.js'
 import { jobService } from '../services/jobService.js'
 import { stockTypeService } from '../services/stockTypeService.js'
 import { useJobTab } from '../composables/useJobTab.js'
@@ -310,16 +329,27 @@ const tabs = [
   { id: 'components', label: 'Components', fields: [] },
 ]
 
-// ===== 数据源 =====
+// ===== 数据源（后端驱动；db.componentTypes 作为响应式缓存）=====
 const all = computed(() => componentService.listComponentTypes())
 // 动态计算每条类型的 Jobs 数（覆盖 mock 静态值）
+const filterCrit = ref(null)
 const viewRows = computed(() => {
-  const rows = all.value.map((r) => ({
+  const base = filterCrit.value
+    ? all.value.filter((r) => matchRow(r, [...filterBasic, ...filterAdvanced], filterCrit.value))
+    : all.value
+  return base.map((r) => ({
     ...r,
     _jobs: jobService.countForComponentType(r.typeNumber),
   }))
-  return rows
 })
+// 从后端加载全部组件类型（替换 db.componentTypes 内容）
+async function refresh() {
+  try {
+    await componentTypeService.loadAll()
+  } catch (e) {
+    showToast('加载组件类型失败：' + (e.message || e), 'warn')
+  }
+}
 const showFilter = ref(false)
 const selected = ref(null)
 
@@ -372,9 +402,10 @@ function viewComponent(c) {
 watch(() => store.department, () => { selected.value = null })
 watch(() => store.installation, () => { selected.value = null })
 
-function applyPreset() {
+async function applyPreset() {
+  await refresh()
   if (store.presetFilter) { applyFilter(store.presetFilter); setPresetFilter(null) }
-  else viewRows.value // computed 已自动更新
+  else filterCrit.value = null
   // 单条结果时自动选中
   if (selected.value === null && viewRows.value.length === 1) {
     onSelect(viewRows.value[0])
@@ -383,13 +414,7 @@ function applyPreset() {
 
 function applyFilter(c) {
   showFilter.value = false
-  const crit = c || {}
-  const filtered = all.value.filter((r) => matchRow(r, [...filterBasic, ...filterAdvanced], crit))
-  // 重新映射 _jobs
-  viewRows.value = filtered.map((r) => ({
-    ...r,
-    _jobs: jobService.countForComponentType(r.typeNumber),
-  }))
+  filterCrit.value = c || null
 }
 function reopenFilter() { selected.value = null; showFilter.value = true }
 
@@ -506,12 +531,51 @@ function doNew() {
   all.value.push(rec); selected.value = rec
   showToast('已新建组件类型，编辑后 Save', 'ok')
 }
-function doSave() { if (selected.value) showToast('已保存（内存态）', 'ok') }
-function doDelete() {
-  if (!selected.value) return
-  const i = all.value.findIndex((r) => r.id === selected.value.id)
-  if (i >= 0) all.value.splice(i, 1)
-  selected.value = null; showToast('已删除', 'warn')
+// 是否为尚未落库的新建草稿（后端 id 为数字；草稿 id 形如 ct_...）
+function isNew(rec) {
+  return !rec || rec.id == null || typeof rec.id === 'string'
+}
+// Register as Component 对话框状态
+const regOpen = ref(false)
+const regForm = ref({ number: '', name: '', location: '', department: '', installation: '', serialNo: '' })
+// 注册后自动切换到 Components 标签
+const presetTab = ref('')
+
+async function doSave() {
+  const rec = selected.value
+  if (!rec) return
+  try {
+    if (isNew(rec)) {
+      await componentTypeService.create(rec)
+    } else {
+      await componentTypeService.update(rec.id, rec)
+    }
+    const tn = rec.typeNumber
+    await componentTypeService.loadAll()
+    selected.value = componentTypeService.listComponentTypes().find((r) => r.typeNumber === tn) || null
+    showToast('已保存到后端', 'ok')
+  } catch (e) {
+    showToast('保存失败：' + (e.message || e), 'warn')
+  }
+}
+async function doDelete() {
+  const rec = selected.value
+  if (!rec) return
+  if (isNew(rec)) {
+    const i = all.value.indexOf(rec)
+    if (i >= 0) all.value.splice(i, 1)
+    selected.value = null
+    showToast('已丢弃新建草稿', 'warn')
+    return
+  }
+  try {
+    await componentTypeService.remove(rec.id)
+    await componentTypeService.loadAll()
+    selected.value = null
+    showToast('已删除（后端）', 'warn')
+  } catch (e) {
+    showToast('删除失败：' + (e.message || e), 'warn')
+  }
 }
 
 // Options > View：确保选中行并展示详情面板（与 Components 单击/双击行为一致）
@@ -528,9 +592,29 @@ function registerComponent() {
   optionsOpen.value = false
   const t = selected.value
   if (!t) { showToast('请先选择组件类型', 'warn'); return }
-  // 打开 Components 窗口并预设该类型（实际注册在 Components 窗口中完成）
-  showToast(`Register as Component：将在 Components 窗口中创建 ${t.typeNumber} 的组件实例`, 'info')
-  openWindow('components')
+  if (isNew(t)) { showToast('请先保存该组件类型，再注册为组件', 'warn'); return }
+  regForm.value = {
+    number: 'C-' + (t.typeNumber || '').replace(/^CT-/, '') + '-1',
+    name: t.name || '',
+    location: '',
+    department: store.department || '',
+    installation: store.installation || '',
+    serialNo: '',
+  }
+  regOpen.value = true
+}
+async function confirmRegister() {
+  const t = selected.value
+  if (!t) return
+  try {
+    const comp = await componentTypeService.registerComponent(t.id, regForm.value)
+    componentService.addComponentSeed(comp)
+    regOpen.value = false
+    presetTab.value = 'components'
+    showToast('已注册为组件实例：' + (comp.number || ''), 'ok')
+  } catch (e) {
+    showToast('注册失败：' + (e.message || e), 'warn')
+  }
 }
 
 // Options > View Job：打开 Component Type Jobs 并预过滤到当前选中类型

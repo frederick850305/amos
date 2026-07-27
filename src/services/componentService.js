@@ -82,6 +82,12 @@ export const componentService = {
     db.componentTypes.push(record)
     return record
   },
+  // 由 Component Types 的 Register as Component 流程 seed 一条后端返回的实例
+  // （过渡期：Components 模块仍为 mock，待其后端化后移除该 seed）
+  addComponentSeed(comp) {
+    db.components.push(comp)
+    return comp
+  },
 
   // ---- 注册组件（来自 Component Types 窗口 Options > Register as Component） ----
   // 注册时尚未安装到 function，状态按手册推导为 'Available'。
