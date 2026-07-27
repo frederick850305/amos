@@ -13,10 +13,13 @@
         <button class="amos-btn sm" @click="onSearch">Search</button>
         <button class="amos-btn sm" @click="doNew">New</button>
         <button class="amos-btn sm primary" @click="doSave" :disabled="!selected">Save</button>
-        <button class="amos-btn sm" @click="doDelete" :disabled="!selected || isNew(selected) || selectedInactive">Delete</button>
+        <!-- 非 showAll 模式（其它 register）：保留软删 Delete + Reactivate + 显示已停用开关 -->
+        <button v-if="!showAllMode" class="amos-btn sm" @click="doDelete" :disabled="!selected || isNew(selected) || selectedInactive">Delete</button>
+        <!-- showAll 模式（如 Function Criticality）：参考数据无删除，仅切换 active 状态 -->
+        <button v-if="showAllMode" class="amos-btn sm" @click="doDeactivate" :disabled="!selected || isNew(selected) || !selectedInactive">Deactivate</button>
         <button class="amos-btn sm" @click="doReactivate" :disabled="!selected || isNew(selected) || !selectedInactive">Reactivate</button>
         <button class="amos-btn sm" @click="doRefresh">Refresh</button>
-        <label class="rw-toggle"><input type="checkbox" v-model="showInactive" @change="onToggleInactive" /> 显示已停用</label>
+        <label v-if="!showAllMode" class="rw-toggle"><input type="checkbox" v-model="showInactive" @change="onToggleInactive" /> 显示已停用</label>
       </div>
     </div>
 
@@ -121,6 +124,9 @@ const statusClass = computed(() => {
 
 // 路线 B：默认隐藏已停用记录；仅当打开“显示已停用”时向后端请求全部（含失效）记录
 const showInactive = ref(false)
+// showAll 模式（如 Function Criticality）：参考数据无删除、仅有 active 状态，
+// 列表显示全部记录（失效置灰），不做 active/status 过滤，也不显示“显示已停用”开关
+const showAllMode = computed(() => config.value?.showAll === true)
 
 function isActive(row) {
   if (!row || !config.value) return true
@@ -143,9 +149,10 @@ async function load() {
       size: size.value,
       sort: sort.value,
       q: q.value || undefined,
-      ...(showInactive.value ? {} : (config.value.statusKind === 'boolean'
+      // showAll 模式：显示全部记录（含失效），不加 active/status 过滤
+      ...(showAllMode.value ? {} : (showInactive.value ? {} : (config.value.statusKind === 'boolean'
         ? { active: true }
-        : { status: 'ACTIVE' })),
+        : { status: 'ACTIVE' }))),
     })
     // 后端返回 Spring Page 信封（带 page/size 时）或数组（兼容/演示回落）
     if (data && !Array.isArray(data) && Array.isArray(data.content)) {
@@ -251,6 +258,27 @@ async function doReactivate() {
     showToast('已启用该记录', 'ok')
   } catch (e) {
     showToast('启用失败：' + (e.message || '后端错误'), 'warn')
+  }
+}
+
+// showAll 模式：停用记录（置 active=false / status=INACTIVE），作为 Deactivate 按钮动作
+async function doDeactivate() {
+  if (!selected.value || isNew(selected.value)) return showToast('请先选择记录', 'warn')
+  if (!isActive(selected.value)) return showToast('该记录已处于停用状态', 'info')
+  const c = config.value
+  const payload = { ...selected.value }
+  delete payload.id
+  payload[c.statusField] = c.statusKind === 'boolean' ? false : 'INACTIVE'
+  try {
+    const saved = await registerService.update(store.activeKey, selected.value.id, payload)
+    await load()
+    const found = rows.value.find((r) => r.id === saved.id)
+    selected.value = found ? reactive({ ...found }) : null
+    preselectId.value = found ? String(saved.id) : ''
+    await refreshCache()
+    showToast('已停用该记录', 'warn')
+  } catch (e) {
+    showToast('停用失败：' + (e.message || '后端错误'), 'warn')
   }
 }
 

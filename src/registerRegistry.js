@@ -77,11 +77,14 @@ export const registerRegistry = {
   },
 
   // 手册 P44-46：Function Criticality 注册表（degree 列表 + 颜色编码指示器）
+  // showAll：参考数据无“删除”概念，仅有 active 状态 —— 列表显示全部记录（失效置灰），
+  // 隐藏 Delete 与“显示已停用”开关，改由 Deactivate / Reactivate 切换状态。
   'function-criticalities': {
     windowTitle: 'Function Criticality',
     codeField: 'degree',
     statusField: 'active',
     statusKind: 'boolean',
+    showAll: true,
     columns: [
       { key: 'degree', label: 'Degree', width: '120px' },
       { key: 'description', label: 'Description', width: '160px' },
