@@ -56,8 +56,8 @@ export function create(key, payload) {
 export function update(key, id, payload) {
   return reg(PATHS[key] + '/' + id, { method: 'PUT', body: payload })
 }
-// 删除（DELETE /{id}）。function-criticalities 等无外键引用的 register 由后端物理删除；
-// locations / makers / vendors 等有依赖的 register 后端仍软删（置 INACTIVE / active=false）。
+// 删除（DELETE /{id}）：后端对全部 register 统一软删（置 INACTIVE / active=false），不物理移除。
+// 前端默认隐藏已停用记录（见 RegisterWindow），并提供 Reactivate 重新启用。
 export function remove(key, id) {
   return reg(PATHS[key] + '/' + id, { method: 'DELETE' })
 }
