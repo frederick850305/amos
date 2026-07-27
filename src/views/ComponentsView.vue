@@ -385,7 +385,7 @@ const tabs = [
     { key: 'location', label: 'Location', type: 'lookup', lookupKey: 'locations' },
     { key: 'parentComponent', label: 'Parent Component', type: 'lookup-with-name', lookupKey: 'components' },
     { key: 'installDate', label: 'Install Date', type: 'date' },
-    { key: 'componentTypeModel', label: 'Component Type Model' },
+    { key: 'componentTypeModel', label: 'Component Type Model', type: 'lookup', lookupKey: 'componentTypeModels' },
   ] },
   // 手册 Component Locations：Functions Performed —— 组件安装 / 拆卸历史
   { id: 'functions-performed', label: 'Functions Performed', fields: [] },
