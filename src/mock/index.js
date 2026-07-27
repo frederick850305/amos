@@ -708,7 +708,10 @@ export const lookups = {
   // 手册 P60：Job Description 库查找（Look up a Job Description）—— 编号 + 标题，并携带 revision / title 供选中后自动带出
   jobDescriptions: () => db.jobDescriptions.map((j) => ({ code: j.code, label: `${j.code} — ${j.title}`, revision: j.revision, title: j.title })),
   // 手册 P147：Resp. Discipline —— 负责工种（子承包时必填），来源 Disciplines 寄存器
-  disciplines: () => ['Fitter', 'Engineer', 'Welder', 'Surveyor', 'Electrical', 'Hydraulic', 'Bosun'].map((d) => ({ code: d, label: d })),
+  // 前端联调：优先用后端 discipline 表（code/name）；缓存为空时回落本地 Mock
+  disciplines: () => session.registerCache.disciplines.length
+    ? session.registerCache.disciplines.map((d) => ({ code: d.code, label: d.name }))
+    : ['Fitter', 'Engineer', 'Welder', 'Surveyor', 'Electrical', 'Hydraulic', 'Bosun'].map((d) => ({ code: d, label: d })),
   // 手册 P71：History Template —— Report Work 阶段历史记录模板（MandatoryHistory 时可选）
   historyTemplates: () => ['Standard ME Overhaul', 'Boiler Survey', 'Pump Inspection', 'General Round', 'DNV Survey'].map((t) => ({ code: t, label: t })),
   // 手册（截图 P51）：Maint. Criteria —— 维护准则分级
@@ -739,6 +742,27 @@ export const lookups = {
   makers: () => session.registerCache.makers.length
     ? session.registerCache.makers.map((m) => ({ code: m.code, label: m.name }))
     : db.makerRegistry.map((m) => ({ code: m.code, label: m.name })),
+  // 手册 Chapter 4 / Stock：Units —— 计量单位，被 stock_types / stock_items 的 unit 引用
+  // 前端联调：优先用后端 unit_register；缓存为空时回落本地 Mock
+  units: () => session.registerCache.units.length
+    ? session.registerCache.units.map((u) => ({ code: u.code, label: u.name || u.code }))
+    : ['pcs', 'set', 'kg', 'L', 'm', 'box', 'kit', 'roll'].map((u) => ({ code: u, label: u })),
+  // 手册 Chapter 4 / Purchasing：Currencies —— 币种，被 vendors / purchase_forms / budgets 引用
+  currencies: () => session.registerCache.currencies.length
+    ? session.registerCache.currencies.map((c) => ({ code: c.code, label: c.name || c.code }))
+    : ['USD', 'EUR', 'CNY', 'SGD', 'GBP'].map((c) => ({ code: c, label: c })),
+  // 手册：Job Classes —— 作业等级，被 jobs.class_code 引用
+  jobClasses: () => session.registerCache.jobClasses.length
+    ? session.registerCache.jobClasses.map((j) => ({ code: j.code, label: j.name || j.code }))
+    : ['Class A', 'Class B', 'Class C'].map((j) => ({ code: j, label: j })),
+  // 手册：Trades —— 工种，被 jobs.trade 引用
+  trades: () => session.registerCache.trades.length
+    ? session.registerCache.trades.map((t) => ({ code: t.code, label: t.name || t.code }))
+    : ['Mechanical', 'Electrical', 'Hydraulic', 'Welding', 'Survey'].map((t) => ({ code: t, label: t })),
+  // 手册 Chapter 5：Budget Codes —— 预算代码，被 budgets.budget_code 引用
+  budgetCodes: () => session.registerCache.budgetCodes.length
+    ? session.registerCache.budgetCodes.map((b) => ({ code: b.code, label: b.name || b.code }))
+    : ['BG-PUR-2026', 'BG-STK-2026', 'BG-MNT-2026'].map((b) => ({ code: b, label: b })),
 }
 
 // ===== Dashboard 告警 / 通知（从 db 动态计算，确保双击跳转后数据一致） =====

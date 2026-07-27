@@ -25,6 +25,12 @@ export const session = reactive({
     vendors: [],
     functionCriticalities: [],
     locations: [],
+    units: [],
+    currencies: [],
+    jobClasses: [],
+    trades: [],
+    disciplines: [],
+    budgetCodes: [],
   },
 })
 
@@ -46,19 +52,31 @@ function normalizeScopes(scopes) {
   }))
 }
 
-// 从后端拉取 4 个被 lookup 引用的 register（makers/vendors/fc/locations）
+// 从后端拉取全部 10 个 register（makers/vendors/fc/locations/units/currencies/job-classes/trades/disciplines/budget-codes）
 export async function loadRegisterLookups() {
   try {
-    const [makers, vendors, fcs, locs] = await Promise.all([
+    const [makers, vendors, fcs, locs, units, currencies, jobClasses, trades, disciplines, budgetCodes] = await Promise.all([
       registerService.makers(),
       registerService.vendors(),
       registerService.functionCriticalities(),
       registerService.locations(),
+      registerService.units(),
+      registerService.currencies(),
+      registerService.jobClasses(),
+      registerService.trades(),
+      registerService.disciplines(),
+      registerService.budgetCodes(),
     ])
     if (Array.isArray(makers)) session.registerCache.makers = makers
     if (Array.isArray(vendors)) session.registerCache.vendors = vendors
     if (Array.isArray(fcs)) session.registerCache.functionCriticalities = fcs
     if (Array.isArray(locs)) session.registerCache.locations = locs
+    if (Array.isArray(units)) session.registerCache.units = units
+    if (Array.isArray(currencies)) session.registerCache.currencies = currencies
+    if (Array.isArray(jobClasses)) session.registerCache.jobClasses = jobClasses
+    if (Array.isArray(trades)) session.registerCache.trades = trades
+    if (Array.isArray(disciplines)) session.registerCache.disciplines = disciplines
+    if (Array.isArray(budgetCodes)) session.registerCache.budgetCodes = budgetCodes
   } catch (e) {
     // 后端不可达：保持空缓存，lookups 自动回落 Mock
   }
@@ -103,7 +121,7 @@ export function enterDemoMode() {
   session.loggedIn = true
   session.user = 'Demo (Mock)'
   session.installations = []
-  session.registerCache = { makers: [], vendors: [], functionCriticalities: [], locations: [] }
+  session.registerCache = { makers: [], vendors: [], functionCriticalities: [], locations: [], units: [], currencies: [], jobClasses: [], trades: [], disciplines: [], budgetCodes: [] }
 }
 
 export function logout() {
@@ -113,5 +131,5 @@ export function logout() {
   session.user = ''
   session.roles = []
   session.installations = []
-  session.registerCache = { makers: [], vendors: [], functionCriticalities: [], locations: [] }
+  session.registerCache = { makers: [], vendors: [], functionCriticalities: [], locations: [], units: [], currencies: [], jobClasses: [], trades: [], disciplines: [], budgetCodes: [] }
 }

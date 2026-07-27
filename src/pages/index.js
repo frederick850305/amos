@@ -18,6 +18,7 @@ import WorkflowNotificationsView from '../views/WorkflowNotificationsView.vue'
 import ComponentStatusLogView from '../views/ComponentStatusLogView.vue'
 import ComponentArchiveView from '../views/ComponentArchiveView.vue'
 import GenericWindowView from '../views/GenericWindowView.vue'
+import RegisterWindowView from '../views/RegisterWindowView.vue'
 
 // 专用页面（重点实现）
 const specialized = {
@@ -39,6 +40,17 @@ const specialized = {
   'workflow-notifications': WorkflowNotificationsView,
   'component-status-log': ComponentStatusLogView,
   'component-archive': ComponentArchiveView,
+  // 手册模块 2：Registers —— 10 个基础主数据寄存器，统一走 API 驱动的通用管理窗口
+  'makers': RegisterWindowView,
+  'vendors': RegisterWindowView,
+  'locations': RegisterWindowView,
+  'function-criticalities': RegisterWindowView,
+  'units': RegisterWindowView,
+  'currencies': RegisterWindowView,
+  'job-classes': RegisterWindowView,
+  'trades': RegisterWindowView,
+  'disciplines': RegisterWindowView,
+  'budget-codes': RegisterWindowView,
 }
 
 // 其余页面统一走通用业务窗口（Filter + 列表 + 明细标签页）
