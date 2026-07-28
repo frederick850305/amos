@@ -489,8 +489,18 @@ const relWO = computed(() => !selected.value ? [] : workOrderService.byComponent
 const relHistory = computed(() => relWO.value.filter((w) => w.status === 'Completed'))
 const relLog = computed(() => selected.value?.maintenanceLog || [])
 const relAttachments = computed(() => selected.value?.attachments || [])
-// 手册 Component Locations：Functions Performed 历史（安装 / 拆卸记录）
-const relFunctionHistory = computed(() => !selected.value ? [] : componentService.getFunctionHistory(selected.value.id))
+// 手册 Component Locations：Functions Performed 历史（安装 / 拆卸记录，后端持久化）
+const relFunctionHistory = ref([])
+async function loadFunctionHistory() {
+  if (!selected.value || typeof selected.value.id !== 'number') { relFunctionHistory.value = []; return }
+  try {
+    relFunctionHistory.value = await componentService.getFunctionHistory(selected.value.id)
+  } catch {
+    relFunctionHistory.value = []
+  }
+}
+watch(selected, loadFunctionHistory)
+watch(() => selected.value?.functionNo, () => { if (selected.value) loadFunctionHistory() })
 // 手册 Component Locations：Function Performing —— 当前安装 function 的只读字段
 const currentFunction = computed(() => selected.value?.functionNo ? functionService.get(selected.value.functionNo) : null)
 // 手册 2.2：Type Details 继承自 Component Type 的只读参考信息
@@ -621,8 +631,18 @@ async function onDetailChange(e) {
       selected.value.componentMeasurePoints = ct.measurePointDefs.map((m) => ({ ...m, value: '', lastReadDate: '' }))
     }
   } else if (e.key === 'functionNo') {
-    await componentService.setFunction(selected.value.id, e.value)
-    showToast(`功能位置变更：状态自动推导为 ${selected.value.status}`, 'info')
+    try {
+      await componentService.setFunction(selected.value.id, e.value)
+      // 同步本地选中对象（setFunction 已刷新缓存数组元素，此处对齐引用）
+      const refreshed = await componentService.get(selected.value.id).catch(() => null)
+      if (refreshed) Object.assign(selected.value, refreshed)
+      showToast(`功能位置变更：状态自动推导为 ${selected.value.status}`, 'info')
+    } catch (err) {
+      showToast('功能位置变更失败：' + (err.message || err), 'warn')
+      // 回滚 UI 字段到后端真实状态
+      const refreshed = await componentService.get(selected.value.id).catch(() => null)
+      if (refreshed) Object.assign(selected.value, refreshed)
+    }
   }
 }
 // 手册 P44：Counters 标签 Update / Set Start 按钮（RecordDetail 子表 subActions 触发）
