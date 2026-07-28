@@ -18,12 +18,14 @@
 //   * 手动可切换为 'Transferred' / 'Scrapped'
 //   * 所有状态变更经后端 change-status 命令持久化，并写 component_status_log。
 //
-// 安装/拆卸（setFunction）与 Function History 属模块 06，暂保持本地 mock，
-// 但其产生的 functionNo / status 会在 save 时经 PUT 持久化。
+// 安装/拆卸（setFunction）与 Function History（getFunctionHistory）已在模块 06 后端化：
+// setFunction 经 functionService 的 install/remove-component 命令持久化并写状态日志；
+// getFunctionHistory 走后端 GET /{id}/function-history。
 // ============================================================
 
 import { db, uid } from '../mock/index.js'
 import { apiFetch } from './api.js'
+import { functionService } from './functionService.js'
 
 const BASE = '/maintenance/components'
 
@@ -263,44 +265,56 @@ export const componentService = {
     return vm
   },
 
-  // ---- 设置功能位置（安装 / 拆卸）----
-  // 安装到 function → 自动推导为 In Use；移除 → Available；并记录本地 Functions Performed 历史。
-  // （安装/拆卸业务后端化留待模块 06；此处保持本地 mock，functionNo/status 经 save 持久化）
+  // ---- 设置功能位置（安装 / 拆卸，模块 06 后端化）----
+  // 经 functionService 的 install/remove-component 命令持久化：
+  //  - 新 functionNo 非空 → 先在旧 function 上拆卸（组件回落 Available），再安装到新 function；
+  //  - 新 functionNo 为空 → 仅在旧 function 上拆卸。
+  // 后端联动维护组件 functionNo / status / location 并写状态日志；本地缓存随后刷新。
   async setFunction(id, functionNo) {
     const comp = db.components.find((c) => c.id === id)
     if (!comp) return null
-    const old = comp.status
-    const oldFn = comp.functionNo
-    comp.functionNo = functionNo || ''
-    if (functionNo) {
-      const fn = db.functions.find((f) => f.functionNo === functionNo)
-      comp.location = fn ? fn.location : comp.location
-    } else {
-      comp.location = ''
+    const oldFn = comp.functionNo || ''
+    const newFn = functionNo || ''
+    if (oldFn === newFn) return comp
+    try {
+      if (oldFn) {
+        // 先从旧 function 拆卸（组件回落 Available，写 Removed 状态日志）
+        await functionService.removeComponent(oldFn, {
+          details: newFn ? `Moved to ${newFn}` : 'Removed from component',
+        })
+      }
+      if (newFn) {
+        await functionService.installComponent(newFn, comp.number, 'Installed via component')
+      }
+      // 刷新本地缓存，确保与后端一致
+      const refreshed = await this.get(comp.id).catch(() => null)
+      if (refreshed) {
+        const i = db.components.findIndex((c) => String(c.id) === String(id))
+        if (i >= 0) db.components[i] = refreshed
+      }
+      return db.components.find((c) => String(c.id) === String(id)) || comp
+    } catch (e) {
+      // 失败：回滚到后端真实状态
+      const refreshed = await this.get(comp.id).catch(() => null)
+      if (refreshed) {
+        const i = db.components.findIndex((c) => String(c.id) === String(id))
+        if (i >= 0) db.components[i] = refreshed
+      }
+      throw e
     }
-    comp.status = deriveStatus(comp)
-    if (comp.status !== old) {
-      // 状态变更经后端 change-status 持久化；此处不写本地 status log（由后端负责）
-    }
-    const newFn = functionNo || oldFn || ''
-    const fnInfo = db.functions.find((f) => f.functionNo === newFn)
-    db.componentFunctionHistory.push({
-      id: uid('cfh'),
-      componentId: comp.id,
-      componentNo: comp.number,
-      functionNo: newFn,
-      functionDescription: fnInfo?.description || '',
-      location: fnInfo?.location || '',
-      action: functionNo ? 'Installed' : 'Removed',
-      performedBy: 'A. Admin',
-      performedAt: new Date().toISOString().slice(0, 10),
-    })
-    return comp
   },
 
-  // ---- Functions Performed 历史（本地 mock，模块 06 后端化）----
-  getFunctionHistory(componentId) {
-    return db.componentFunctionHistory.filter((h) => h.componentId === componentId).slice().reverse()
+  // ---- Functions Performed 历史（模块 06 后端化）----
+  // 后端按组件 id 查询 component_function_history；未保存草稿回落本地 mock。
+  async getFunctionHistory(componentId) {
+    if (componentId == null || typeof componentId !== 'number') {
+      return db.componentFunctionHistory.filter((h) => h.componentId === componentId).slice().reverse()
+    }
+    try {
+      return await apiFetch(`${BASE}/${componentId}/function-history`)
+    } catch {
+      return db.componentFunctionHistory.filter((h) => h.componentId === componentId).slice().reverse()
+    }
   },
 
   // ---- Component Archives（手册 Component Archives）----

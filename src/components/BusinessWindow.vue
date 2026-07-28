@@ -596,7 +596,7 @@ async function doRefresh() {
   showToast('已刷新', 'info')
 }
 // 手册 Component Locations：Functions 窗口字段变更时的级联同步
-function onFieldChange(e) {
+async function onFieldChange(e) {
   if (!e || !e.key || !selected.value) return
   if (config.value?.dataKey === 'functions') {
     const fn = selected.value.functionNo
@@ -605,12 +605,23 @@ function onFieldChange(e) {
       functionService.updateLocation(fn, e.value)
       showToast('功能位置地点变更，已级联更新安装组件的 Location', 'info')
     } else if (e.key === 'installedComponentId') {
-      // 手动改 function 的 installedComponentId → 双向同步组件的 functionNo
-      if (e.value) {
-        const comp = componentService.listSync().find((c) => c.number === e.value)
-        if (comp) componentService.setFunction(comp.id, fn)
+      // 手动改 function 的 installedComponentId → 经后端 install/remove-component 命令持久化
+      try {
+        if (e.value) {
+          await functionService.installComponent(fn, e.value)
+          showToast('已将组件安装到功能位置', 'ok')
+        } else {
+          await functionService.removeComponent(fn, { details: 'Cleared from function' })
+          showToast('已从功能位置拆卸组件', 'info')
+        }
+        // 同步选中对象（命令已刷新 db.functions 缓存）
+        const refreshed = functionService.get(fn)
+        if (refreshed) Object.assign(selected.value, refreshed)
+      } catch (err) {
+        showToast('安装/拆卸失败：' + (err.message || err), 'warn')
+        const refreshed = functionService.get(fn)
+        if (refreshed) Object.assign(selected.value, refreshed)
       }
-      showToast('已同步组件的功能位置', 'info')
     }
   }
 }
