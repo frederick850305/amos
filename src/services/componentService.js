@@ -270,6 +270,8 @@ export const componentService = {
   //  - 新 functionNo 非空 → 先在旧 function 上拆卸（组件回落 Available），再安装到新 function；
   //  - 新 functionNo 为空 → 仅在旧 function 上拆卸。
   // 后端联动维护组件 functionNo / status / location 并写状态日志；本地缓存随后刷新。
+  // 注意：成功后的 UI 刷新不再依赖末尾 get(id)（后端繁忙时可能失败），改为乐观更新本地缓存，
+  // get(id) 仅作为后台校正且失败忽略，避免 Install/Remove 后 UI 不刷新（按钮灰色 / 报未安装）。
   async setFunction(id, functionNo) {
     const comp = db.components.find((c) => c.id === id)
     if (!comp) return null
@@ -277,25 +279,28 @@ export const componentService = {
     const newFn = functionNo || ''
     if (oldFn === newFn) return comp
     try {
+      // 先从旧 function 拆卸（组件回落 Available）。若旧 function 已无组件（已拆），
+      // 后端会抛 "no component installed"，属无害场景，忽略并继续安装新 function。
       if (oldFn) {
-        // 先从旧 function 拆卸（组件回落 Available，写 Removed 状态日志）
-        await functionService.removeComponent(oldFn, {
-          details: newFn ? `Moved to ${newFn}` : 'Removed from component',
-        })
+        try {
+          await functionService.removeComponent(oldFn, {
+            details: newFn ? `Moved to ${newFn}` : 'Removed from component',
+          })
+        } catch (removeErr) {
+          console.warn('[setFunction] removeComponent(old) skipped:', removeErr?.message || removeErr)
+        }
       }
       if (newFn) {
         await functionService.installComponent(newFn, comp.number, 'Installed via component')
       }
-      // 刷新本地缓存，确保与后端一致
-      const refreshed = await this.get(comp.id).catch(() => null)
-      if (refreshed) {
-        const i = db.components.findIndex((c) => String(c.id) === String(id))
-        if (i >= 0) db.components[i] = refreshed
-      }
-      return db.components.find((c) => String(c.id) === String(id)) || comp
+      // 乐观更新本地缓存（不依赖末端 get，避免后端繁忙时 UI 不刷新）
+      const updated = db.components.find((c) => String(c.id) === String(id)) || comp
+      updated.functionNo = newFn
+      updated.status = newFn ? 'In Use' : 'Available'
+      return updated
     } catch (e) {
-      // 失败：回滚到后端真实状态
-      const refreshed = await this.get(comp.id).catch(() => null)
+      // 安装 / 拆卸失败：回滚到后端真实状态（后台校正，失败忽略）
+      const refreshed = await this.get(id).catch(() => null)
       if (refreshed) {
         const i = db.components.findIndex((c) => String(c.id) === String(id))
         if (i >= 0) db.components[i] = refreshed

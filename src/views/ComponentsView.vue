@@ -145,7 +145,7 @@
               <span v-else class="muted">未安装</span>
               <span style="flex:1"></span>
               <button class="amos-btn xs primary" @click="openInstall">Install</button>
-              <button class="amos-btn xs" :disabled="!selected.functionNo" @click="applyRemove">Remove</button>
+              <button class="amos-btn xs" :disabled="!currentlyInstalledFn" @click="applyRemove">Remove</button>
             </div>
             <div class="table-wrap"><table class="amos-grid sub">
               <thead><tr><th>Function</th><th>Description</th><th>Location</th><th>Action</th><th>Date</th><th>By</th></tr></thead>
@@ -524,6 +524,17 @@ watch(selected, loadFunctionHistory)
 watch(() => selected.value?.functionNo, () => { if (selected.value) loadFunctionHistory() })
 // 手册 Component Locations：Function Performing —— 当前安装 function 的只读字段
 const currentFunction = computed(() => selected.value?.functionNo ? functionService.get(selected.value.functionNo) : null)
+// 手册 Component Locations：当前是否装着组件（Remove 按钮可用性依据）。
+// 优先用 selected.functionNo（乐观更新后可靠）；回退用 function-history 最新一条 Installed 反推。
+const currentlyInstalledFn = computed(() => {
+  if (selected.value?.functionNo) return selected.value.functionNo
+  const h = relFunctionHistory.value || []
+  if (h.length) {
+    const last = [...h].sort((a, b) => String(b.performedAt || '').localeCompare(String(a.performedAt || '')))[0]
+    if (last?.action === 'Installed') return last.functionNo
+  }
+  return ''
+})
 // 手册 2.2：Type Details 继承自 Component Type 的只读参考信息
 const inheritedType = computed(() => {
   if (!selected.value?.typeNumber) return null
@@ -682,6 +693,14 @@ async function applyInstall() {
   const fnNo = fnPickerTarget.value
   showFnPicker.value = false
   if (!fnNo || !selected.value) return
+  // 第 4 点：目标 function 已装别的组件时提示（安装将自动拆卸旧组件并记 Rotation Log）
+  const occupied = functionService.get(fnNo)?.installedComponentId
+  if (occupied && occupied !== selected.value.number) {
+    const ok = window.confirm(
+      `功能位置 ${fnNo} 当前装有组件 ${occupied}。安装新组件将自动拆卸 ${occupied} 并记录 Rotation Log。是否继续？`,
+    )
+    if (!ok) return
+  }
   await setComponentFunction(fnNo)
 }
 async function applyRemove() {
@@ -690,16 +709,19 @@ async function applyRemove() {
 }
 async function setComponentFunction(fnNo) {
   const comp = selected.value
+  if (!comp) return
   try {
-    await componentService.setFunction(comp.id, fnNo)
-    const refreshed = await componentService.get(comp.id).catch(() => null)
-    if (refreshed) Object.assign(comp, refreshed)
+    const updated = await componentService.setFunction(comp.id, fnNo)
+    // 乐观同步选中对象（setFunction 已乐观更新缓存，这里确保 UI 立即反映新状态）
+    if (updated) Object.assign(comp, updated)
     showToast(fnNo ? `已安装到 ${fnNo}` : '已拆卸（回落可用）', 'info')
   } catch (err) {
     showToast('安装/拆卸失败：' + (err.message || err), 'warn')
-    const refreshed = await componentService.get(comp.id).catch(() => null)
-    if (refreshed) Object.assign(comp, refreshed)
   }
+  // 后台校正（失败忽略，不阻断 UI）
+  componentService.get(comp.id).then((refreshed) => {
+    if (refreshed) Object.assign(comp, refreshed)
+  }).catch(() => {})
 }
 // 手册 P44：Counters 标签 Update / Set Start 按钮（RecordDetail 子表 subActions 触发）
 function onSubAction(e) {
