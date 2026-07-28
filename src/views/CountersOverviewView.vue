@@ -62,7 +62,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Modal from '../components/Modal.vue'
 import { componentService } from '../services/componentService.js'
 import { counterService } from '../services/counterService.js'
@@ -71,8 +71,9 @@ const showFind = ref(true)
 const crit = ref({ component: '', function: '', inherits: '', includeChildren: true })
 
 const compByNo = computed(() => componentService.byNo())
+const rows = ref([])
 
-// Average = 当前读数 / 自安装（或读数日往前 365 天基准）的天数
+// Average 回落计算（后端未给 average 时）：当前读数 / 自安装至读数日的天数
 function averageOf(rec) {
   const comp = compByNo.value[rec.component]
   const base = comp?.installDate || rec.latestZeroedDate
@@ -84,34 +85,60 @@ function averageOf(rec) {
   return (rec.currentValue / days).toFixed(1)
 }
 
-const rows = computed(() => {
+// 手册 P44：Inherits from component 按父子关系与计数器依赖（dependsOn）二次过滤（客户端）
+function filterInherits(list) {
   const c = crit.value
-  return counterService.allCounters()
-    .filter((r) => {
+  if (!c.inherits) return list
+  const childOf = (no) => {
+    let cur = compByNo.value[no]
+    while (cur && cur.parentComponent) {
+      if (cur.parentComponent === c.inherits) return true
+      cur = compByNo.value[cur.parentComponent]
+    }
+    return false
+  }
+  return list.filter(
+    (r) =>
+      r.component === c.inherits ||
+      (c.includeChildren && childOf(r.component)) ||
+      r.dependsOn === c.inherits,
+  )
+}
+
+// 模块 07 后端化：GET /maintenance/counters/overview（失败回落本地缓存聚合，演示模式兼容）
+async function load() {
+  const c = crit.value
+  // 确保组件缓存已就绪（inherits 父子链过滤 / Average 回落需要 installDate 与 parentComponent）
+  if (!componentService.listSync().some((x) => typeof x.id === 'number')) {
+    await componentService.loadAll().catch(() => {})
+  }
+  let list
+  try {
+    list = await counterService.loadOverview({
+      component: c.component || '',
+      function: c.function || '',
+      // inherits=true 让后端只返回有 dependsOn 的计数器；具体父组件匹配在客户端完成
+      inherits: !!c.inherits,
+    })
+  } catch {
+    list = counterService.allCounters().filter((r) => {
       if (c.component && r.component !== c.component) return false
       if (c.function && r.function !== c.function) return false
-      if (c.inherits) {
-        const childOf = (no) => {
-          let cur = compByNo.value[no]
-          while (cur && cur.parentComponent) {
-            if (cur.parentComponent === c.inherits) return true
-            cur = compByNo.value[cur.parentComponent]
-          }
-          return false
-        }
-        // 手册 P44：Inherits from component 同时按父子关系与计数器依赖（dependsOn）匹配
-        const matchInherits =
-          r.component === c.inherits ||
-          (c.includeChildren && childOf(r.component)) ||
-          r.dependsOn === c.inherits
-        if (!matchInherits) return false
-      }
       return true
     })
-    .map((r) => ({ ...r, average: averageOf(r) }))
-})
+  }
+  rows.value = filterInherits(list).map((r) => ({
+    ...r,
+    average: r.average !== '' && r.average != null ? r.average : averageOf(r),
+  }))
+}
 
-function applyFind() { showFind.value = false }
+onMounted(load)
+
+function applyFind() {
+  showFind.value = false
+  load()
+}
 </script>
 
 <style scoped>

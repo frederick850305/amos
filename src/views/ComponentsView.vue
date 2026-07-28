@@ -522,6 +522,12 @@ async function loadFunctionHistory() {
 }
 watch(selected, loadFunctionHistory)
 watch(() => selected.value?.functionNo, () => { if (selected.value) loadFunctionHistory() })
+// 模块 07：选中组件变化时从后端刷新该组件的计数器读数日志（relCounters 同步派生自缓存）
+watch(selected, (s) => {
+  if (s && typeof s.id === 'number' && s.number) {
+    counterService.loadLogs({ component: s.number }).catch(() => {})
+  }
+})
 // 手册 Component Locations：Function Performing —— 当前安装 function 的只读字段
 const currentFunction = computed(() => selected.value?.functionNo ? functionService.get(selected.value.functionNo) : null)
 // 手册 Component Locations：当前是否装着组件（Remove 按钮可用性依据）。
@@ -724,15 +730,21 @@ async function setComponentFunction(fnNo) {
   }).catch(() => {})
 }
 // 手册 P44：Counters 标签 Update / Set Start 按钮（RecordDetail 子表 subActions 触发）
-function onSubAction(e) {
+async function onSubAction(e) {
   const { action, tabId, row } = e
   const comp = selected.value
   if (!comp) return showToast('请先选择组件', 'warn')
   if (tabId !== 'counters') return
   if (!row) return showToast('请先在 Counters 标签选中一行计数器', 'warn')
   if (action === 'setStart') {
-    counterService.setStart(comp.number, row.code)
-    showToast(`已设置起点（归零）：${row.code} 的 Total at Zeroed = ${row.currentValue}`, 'ok')
+    // 模块 07 后端化：Set Start 经 POST set-start 命令持久化（快照当前值、重置平均）
+    try {
+      const updated = await counterService.setStart(comp.number, row.code)
+      if (updated) Object.assign(row, updated)
+      showToast(`已设置起点（归零）：${row.code} 的 Total at Zeroed = ${row.startValue}（已持久化）`, 'ok')
+    } catch (err) {
+      showToast('Set Start 失败：' + (err.message || err), 'warn')
+    }
   } else if (action === 'update') {
     // 手册 P44：Update 按钮 → 打开 Update Counters 并预填当前组件
     store.presetCounterComponent = comp.number

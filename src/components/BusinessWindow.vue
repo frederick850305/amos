@@ -533,10 +533,28 @@ function doNew() {
 }
 async function doSave() {
   if (!selected.value) return showToast('请先选择或新建记录', 'warn')
-  // 手册 3（Update Counters）：保存时把读数回写到组件计数器，并级联依赖组件
+  // 手册 3（Update Counters）：保存时经后端命令写读数日志并回写组件计数器（含依赖级联 + function 计数器同步）
   if (config.value?.dataKey === 'counterLogs') {
-    counterService.recordReading(selected.value)
-    showToast('已记录读数并回写组件计数器（含依赖联动）', 'ok')
+    try {
+      const res = await counterService.recordReading(selected.value)
+      applyFilter({})
+      selected.value = res.log
+      showToast('已记录读数并回写组件计数器（含依赖联动，已持久化）', 'ok')
+    } catch (e) {
+      showToast('记录读数失败：' + (e.message || e), 'warn')
+    }
+    return
+  }
+  // 手册 3（Update Measure Points）：保存时经后端命令写测点读数日志并回写测点值/趋势
+  if (config.value?.dataKey === 'measureLogs') {
+    try {
+      const res = await counterService.recordMeasurePointReading(selected.value)
+      applyFilter({})
+      selected.value = res.log
+      showToast('已记录测点读数（已持久化）', 'ok')
+    } catch (e) {
+      showToast('记录测点读数失败：' + (e.message || e), 'warn')
+    }
     return
   }
   // 手册 P57-58：作业保存（类型作业 → 传播 / 应用到全部组件）
@@ -592,6 +610,9 @@ async function doRefresh() {
       showToast('刷新功能位置失败：' + (e.message || e), 'warn')
     }
   }
+  // 模块 07：刷新时从后端重新拉取读数日志
+  if (config.value?.dataKey === 'counterLogs') await counterService.loadLogs().catch(() => {})
+  if (config.value?.dataKey === 'measureLogs') await counterService.loadMeasureLogs().catch(() => {})
   applyFilter({})
   showToast('已刷新', 'info')
 }
@@ -1271,6 +1292,13 @@ onMounted(async () => {
     } catch (e) {
       showToast('加载功能位置失败：' + (e.message || e), 'warn')
     }
+  }
+  // 模块 07：Update Counters / Update Measure Points 窗口挂载时从后端拉取持久化读数日志
+  if (config.value?.dataKey === 'counterLogs') {
+    await counterService.loadLogs().catch(() => {})
+  }
+  if (config.value?.dataKey === 'measureLogs') {
+    await counterService.loadMeasureLogs().catch(() => {})
   }
   applyPreset()
   // 手册 P44：Components 窗口 Counters 标签 Update 按钮 → 预填当前组件并定位到 General
