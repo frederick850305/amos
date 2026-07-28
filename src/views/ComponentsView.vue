@@ -132,31 +132,54 @@
               <div class="amos-field"><label>Preferred Vendor</label><div class="ctrl"><input class="amos-input" :value="inheritedType.preferredVendor || '—'" readonly /></div></div>
             </div>
           </template>
-          <!-- 手册 Component Locations：Functions Performed 标签页 -->
+          <!-- 手册 Component Locations：Functions Performed 标签页（安装/拆卸历史 + 当前安装 + 编辑） -->
           <template #extra-functions-performed>
             <p class="muted">组件安装 / 拆卸历史（手册 Component Locations）。</p>
+            <!-- 当前安装功能位置（installedFunction）+ 安装 / 拆卸编辑入口 -->
+            <div style="display:flex;align-items:center;gap:10px;margin:6px 0 10px;flex-wrap:wrap">
+              <span class="muted">当前安装功能位置：</span>
+              <template v-if="selected.functionNo">
+                <strong>{{ selected.functionNo }}</strong>
+                <span class="muted">— {{ currentFunction?.description || '' }}</span>
+              </template>
+              <span v-else class="muted">未安装</span>
+              <span style="flex:1"></span>
+              <button class="amos-btn xs primary" @click="openInstall">Install</button>
+              <button class="amos-btn xs" :disabled="!selected.functionNo" @click="applyRemove">Remove</button>
+            </div>
             <div class="table-wrap"><table class="amos-grid sub">
               <thead><tr><th>Function</th><th>Description</th><th>Location</th><th>Action</th><th>Date</th><th>By</th></tr></thead>
               <tbody>
-                <tr v-for="h in relFunctionHistory" :key="h.id">
-                  <td>{{ h.functionNo }}</td><td>{{ h.functionDescription }}</td><td>{{ h.location }}</td><td>{{ h.action }}</td><td>{{ h.performedAt }}</td><td>{{ h.performedBy }}</td>
+                <tr v-for="h in relFunctionHistory" :key="h.id"
+                    :style="h.functionNo === selected.functionNo && h.action === 'Installed' ? 'background:#e8f2fb' : ''">
+                  <td>
+                    {{ h.functionNo }}
+                    <span v-if="h.functionNo === selected.functionNo && h.action === 'Installed'"
+                          style="margin-left:6px;font-size:11px;color:#1f6fb2;border:1px solid #b9d8f0;border-radius:999px;padding:0 6px">当前</span>
+                  </td>
+                  <td>{{ h.functionDescription }}</td><td>{{ h.location }}</td><td>{{ h.action }}</td><td>{{ h.performedAt }}</td><td>{{ h.performedBy }}</td>
                 </tr>
                 <tr v-if="!relFunctionHistory.length"><td colspan="6" class="muted">暂无安装 / 拆卸记录。</td></tr>
               </tbody>
             </table></div>
-          </template>
-          <!-- 手册 Component Locations：Function Performing 标签页（只读） -->
-          <template #extra-function-performing>
-            <p class="muted" v-if="!currentFunction">该组件当前未安装到任何功能位置。</p>
-            <div v-else class="inherited-box">
-              <p class="muted">当前安装功能位置字段（只读，手册 Component Locations）：</p>
-              <div class="amos-field"><label>Function No.</label><div class="ctrl"><input class="amos-input" :value="currentFunction.functionNo" readonly /></div></div>
-              <div class="amos-field"><label>Description</label><div class="ctrl"><input class="amos-input" :value="currentFunction.description" readonly /></div></div>
-              <div class="amos-field"><label>Location</label><div class="ctrl"><input class="amos-input" :value="currentFunction.location" readonly /></div></div>
-              <div class="amos-field"><label>Department</label><div class="ctrl"><input class="amos-input" :value="currentFunction.department" readonly /></div></div>
-              <div class="amos-field"><label>Criticality</label><div class="ctrl"><input class="amos-input" :value="currentFunction.criticality" readonly /></div></div>
-              <div class="amos-field"><label>Status</label><div class="ctrl"><input class="amos-input" :value="currentFunction.status" readonly /></div></div>
-            </div>
+            <!-- Install 功能位置选择器 -->
+            <Teleport to="body">
+              <div v-if="showFnPicker" class="open-dialog-overlay" @click.self="showFnPicker=false">
+                <div class="open-dialog reg">
+                  <h3>安装到功能位置 — {{ selected.number }}</h3>
+                  <div class="amos-field"><label>Function</label><div class="ctrl">
+                    <select class="amos-select" v-model="fnPickerTarget">
+                      <option value="" disabled>选择功能位置…</option>
+                      <option v-for="f in fnOptions" :key="f.functionNo" :value="f.functionNo">{{ f.functionNo }} — {{ f.description }}</option>
+                    </select>
+                  </div></div>
+                  <div class="od-actions">
+                    <button class="amos-btn" @click="showFnPicker=false">Cancel</button>
+                    <button class="amos-btn primary" :disabled="!fnPickerTarget" @click="applyInstall">Install</button>
+                  </div>
+                </div>
+              </div>
+            </Teleport>
           </template>
           <!-- 手册 P60：Jobs 标签页 —— 展示该组件已关联的作业（以 JD 视角：Code / Revision / Title / Frequency） -->
           <!-- 顶部 New / Delete / View / Details 全局按钮作用于「选中的作业」（先点选一行） -->
@@ -387,10 +410,8 @@ const tabs = [
     { key: 'installDate', label: 'Install Date', type: 'date' },
     { key: 'componentTypeModel', label: 'Component Type Model', type: 'lookup', lookupKey: 'componentTypeModels' },
   ] },
-  // 手册 Component Locations：Functions Performed —— 组件安装 / 拆卸历史
+  // 手册 Component Locations：Functions Performed（安装 / 拆卸历史 + 当前安装 + 安装/拆卸编辑，后端持久化）
   { id: 'functions-performed', label: 'Functions Performed', fields: [] },
-  // 手册 Component Locations：Function Performing —— 当前安装 function 的只读字段详情
-  { id: 'function-performing', label: 'Function Performing', fields: [] },
   { id: 'jobs', label: 'Jobs', fields: [] },
   { id: 'parts', label: 'Parts', fields: [] },
   // 手册 2 / P44：Counters 标签（New/Delete、继承自组件类型、含 Depends On）
@@ -643,6 +664,41 @@ async function onDetailChange(e) {
       const refreshed = await componentService.get(selected.value.id).catch(() => null)
       if (refreshed) Object.assign(selected.value, refreshed)
     }
+  }
+}
+// 手册 Component Locations：Functions Performed 标签页内的「当前安装」编辑
+// （安装 / 拆卸入口，复用 componentService.setFunction，与详情区 Function 字段同源）
+const showFnPicker = ref(false)
+const fnOptions = ref([])
+const fnPickerTarget = ref('')
+async function openInstall() {
+  if (!selected.value) return
+  await functionService.loadAll(store.installation).catch(() => {})
+  fnOptions.value = functionService.listSync().slice()
+  fnPickerTarget.value = selected.value.functionNo || ''
+  showFnPicker.value = true
+}
+async function applyInstall() {
+  const fnNo = fnPickerTarget.value
+  showFnPicker.value = false
+  if (!fnNo || !selected.value) return
+  await setComponentFunction(fnNo)
+}
+async function applyRemove() {
+  if (!selected.value) return
+  await setComponentFunction('')
+}
+async function setComponentFunction(fnNo) {
+  const comp = selected.value
+  try {
+    await componentService.setFunction(comp.id, fnNo)
+    const refreshed = await componentService.get(comp.id).catch(() => null)
+    if (refreshed) Object.assign(comp, refreshed)
+    showToast(fnNo ? `已安装到 ${fnNo}` : '已拆卸（回落可用）', 'info')
+  } catch (err) {
+    showToast('安装/拆卸失败：' + (err.message || err), 'warn')
+    const refreshed = await componentService.get(comp.id).catch(() => null)
+    if (refreshed) Object.assign(comp, refreshed)
   }
 }
 // 手册 P44：Counters 标签 Update / Set Start 按钮（RecordDetail 子表 subActions 触发）
